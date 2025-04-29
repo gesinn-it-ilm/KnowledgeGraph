@@ -239,7 +239,7 @@ nodes=TestPage
 			$title_ = TitleClass::newFromText( $titleText );
 			if ( $title_ && $title_->isKnown() ) {
 				if ( !isset( self::$data[$title_->getFullText()] ) ) {
-					self::setSemanticData( $title_, $params['properties'], 0, $params['depth'] );
+					self::setSemanticData( $title_, $params['properties'], 0, 0 );
 				}
 			}
 		}
@@ -267,21 +267,17 @@ nodes=TestPage
 
 		// enable inverse properties in graphs
 		foreach ( $params['properties'] as $property ) {
+			$startTitle = Title::newFromText( $params['nodes'][0] );
+			$visited = [];
+			$paramProperties = $params['properties'];
+		
 			if ( strpos( $property, '-' ) === 0 ) {
 				$inverseProperty = ltrim( $property, '-' );
-				$inverseSubjects = self::getSubjectsByProperty(
-					$inverseProperty,
-					$limit,
-					$offset,
-					$params['nodes'][0]
-				);
-
-				foreach ( $inverseSubjects as $subjectTitle ) {
+				$allInverseSubjects = self::getAllInverseSubjects( $inverseProperty, $startTitle, $visited );
+		
+				foreach ( $allInverseSubjects as $subjectTitle ) {
 					$key = $subjectTitle->getFullText();
-
-					if ( !isset( self::$data[$key] ) ) {
-						self::setSemanticData( $subjectTitle, [], 0, 1 );
-					}
+					self::setSemanticData( $subjectTitle, [], 0, 1, $paramProperties );
 				}
 			}
 		}
@@ -304,6 +300,49 @@ nodes=TestPage
 			'noparse' => true,
 			'isHTML' => true
 		];
+	}
+
+	/**
+	 * Returns all pages that link to the given node via the specified property, recursively.
+	 *
+	 * @param string $property Property name (e.g. "Links To" or "-Links To")
+	 * @param Title $targetTitle The starting page (e.g. A)
+	 * @param array &$visited Internal tracking of already visited pages
+	 * @param int $limit Query result limit per request
+	 * @return Title[] List of all related subject pages
+	 */
+	public static function getAllInverseSubjects( $property, Title $targetTitle, array &$visited = [], $limit = 100 ) {
+		$results = [];
+
+		$targetKey = $targetTitle->getFullText();
+		if ( isset( $visited[$targetKey] ) ) {
+			return $results;
+		}
+
+		$visited[$targetKey] = true;
+
+		$cleanPropertyName = ltrim( $property, '-' );
+		$propertyDI = \SMW\DIProperty::newFromUserLabel( $cleanPropertyName );
+
+		$inverseSubjects = self::getSubjectsByProperty(
+			$propertyDI,
+			$limit,
+			0,
+			$targetTitle
+		);
+
+		foreach ( $inverseSubjects as $subjectTitle ) {
+			$subjectKey = $subjectTitle->getFullText();
+			if ( !isset( $visited[$subjectKey] ) ) {
+				$results[] = $subjectTitle;
+				$results = array_merge(
+					$results,
+					self::getAllInverseSubjects( $property, $subjectTitle, $visited, $limit )
+				);
+			}
+		}
+
+		return $results;
 	}
 
 	/**
@@ -522,7 +561,7 @@ nodes=TestPage
 	 * @param int $maxDepth
 	 * @return array
 	 */
-	public static function setSemanticData( Title $title, $onlyProperties, $depth, $maxDepth ) {
+	public static function setSemanticData( Title $title, $onlyProperties, $depth, $maxDepth, $paramProperties = null ) {
 		$services = MediaWikiServices::getInstance();
 		$langCode = \RequestContext::getMain()->getLanguage()->getCode();
 		$propertyRegistry = \SMW\PropertyRegistry::getInstance();
@@ -577,8 +616,23 @@ nodes=TestPage
 				continue;
 			}
 
-			$canonicalLabel = $property->getCanonicalLabel();
-			$preferredLabel = $property->getPreferredLabel();
+			if ( isset( $paramProperties ) ) {
+				$label = $property->getLabel();
+				foreach ( $paramProperties as $prop ) {
+					if ( str_contains( $prop, $label ) ) {
+						if ( strpos( $prop, '-' ) === 0 ) {
+							$canonicalLabel = $prop;
+							$preferredLabel = $prop;
+						}
+					} else if ( $prop == $label ) {
+						$canonicalLabel = $property->getCanonicalLabel();
+						$preferredLabel = $property->getPreferredLabel();
+					}
+				}
+			} else {
+				$canonicalLabel = $property->getCanonicalLabel();
+				$preferredLabel = $property->getPreferredLabel();
+			}
 
 			if ( count( $onlyProperties )
 				&& !in_array( $canonicalLabel, $onlyProperties )
