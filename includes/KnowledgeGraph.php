@@ -310,9 +310,10 @@ nodes=TestPage
 	 * @param string $propertyText
 	 * @param int $limit
 	 * @param int $offset
+	 * @param string|Title|null $targetValue
 	 * @return array
 	 */
-	public static function getSubjectsByProperty( $propertyText, $limit = 100, $offset = 0 ) {
+	public static function getSubjectsByProperty( $propertyText, $limit = 100, $offset = 0, $targetValue = null ) {
 		$requestOptions = [
 			'limit'    => $limit,
 			'offset'   => $offset,
@@ -325,13 +326,23 @@ nodes=TestPage
 		$pageRequestOptions = new PageRequestOptions( '', $requestOptions );
 		$pageRequestOptions->initialize();
 
-		// @TODO use destructureDIContainer from QueryResultLookup
 		$DIProperty = $pageRequestOptions->property->getDataItem();
 		$requestOptions = new \SMW\RequestOptions();
 		$requestOptions->setLimit( $limit );
 		$requestOptions->setOffset( $offset );
 
-		$results = self::$SMWStore->getPropertySubjects( $DIProperty, null, $requestOptions );
+		$targetDIValue = null;
+		if ( $targetValue instanceof Title ) {
+			$targetDIValue = \SMW\DIWikiPage::newFromTitle( $targetValue );
+		} elseif ( is_string( $targetValue ) && $targetValue !== '' ) {
+			$title = Title::newFromText( $targetValue );
+			if ( $title ) {
+				$targetDIValue = \SMW\DIWikiPage::newFromTitle( $title );
+			}
+		}
+
+		$results = self::$SMWStore->getPropertySubjects( $DIProperty, $targetDIValue, $requestOptions );
+
 		$ret = [];
 		foreach ( $results as $result ) {
 			$title_ = $result->getTitle();
