@@ -265,6 +265,27 @@ nodes=TestPage
 			}
 		}
 
+		// enable inverse properties in graphs
+		foreach ( $params['properties'] as $property ) {
+			if ( strpos( $property, '-' ) === 0 ) {
+				$inverseProperty = ltrim( $property, '-' );
+				$inverseSubjects = self::getSubjectsByProperty(
+					$inverseProperty,
+					$limit,
+					$offset,
+					$params['nodes'][0]
+				);
+
+				foreach ( $inverseSubjects as $subjectTitle ) {
+					$key = $subjectTitle->getFullText();
+
+					if ( !isset( self::$data[$key] ) ) {
+						self::setSemanticData( $subjectTitle, [], 0, 1 );
+					}
+				}
+			}
+		}
+
 		$params['data'] = self::$data;
 		$params['graphOptions'] = $graphOptions;
 		$params['propertyOptions'] = $propertyOptions;
@@ -306,7 +327,7 @@ nodes=TestPage
 
 		// @TODO use destructureDIContainer from QueryResultLookup
 		$DIProperty = $pageRequestOptions->property->getDataItem();
-		$requestOptions = new \SMWRequestOptions();
+		$requestOptions = new \SMW\RequestOptions();
 		$requestOptions->setLimit( $limit );
 		$requestOptions->setOffset( $offset );
 
