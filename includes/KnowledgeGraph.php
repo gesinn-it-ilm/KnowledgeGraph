@@ -622,7 +622,7 @@ nodes=TestPage
 					if ( str_contains( $prop, $label ) ) {
 						if ( strpos( $prop, '-' ) === 0 ) {
 							$canonicalLabel = $prop;
-							$preferredLabel = $prop;
+							$preferredLabel = $property->getPreferredLabel();
 						}
 					} else if ( $prop == $label ) {
 						$canonicalLabel = $property->getCanonicalLabel();
