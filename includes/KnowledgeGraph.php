@@ -270,11 +270,11 @@ nodes=TestPage
 			$startTitle = Title::newFromText( $params['nodes'][0] );
 			$visited = [];
 			$paramProperties = $params['properties'];
-		
+
 			if ( strpos( $property, '-' ) === 0 ) {
 				$inverseProperty = ltrim( $property, '-' );
 				$allInverseSubjects = self::getAllInverseSubjects( $inverseProperty, $startTitle, $visited );
-		
+
 				foreach ( $allInverseSubjects as $subjectTitle ) {
 					$key = $subjectTitle->getFullText();
 					self::setSemanticData( $subjectTitle, [], 0, 1, $paramProperties );
@@ -559,9 +559,14 @@ nodes=TestPage
 	 * @param array $onlyProperties
 	 * @param int $depth
 	 * @param int $maxDepth
+	 * @param array|null $paramProperties Optional properties to be applied (null if none)
 	 * @return array
 	 */
-	public static function setSemanticData( Title $title, $onlyProperties, $depth, $maxDepth, $paramProperties = null ) {
+	public static function setSemanticData( Title $title,
+											$onlyProperties,
+											$depth,
+											$maxDepth,
+											$paramProperties = null ) {
 		$services = MediaWikiServices::getInstance();
 		$langCode = \RequestContext::getMain()->getLanguage()->getCode();
 		$propertyRegistry = \SMW\PropertyRegistry::getInstance();
@@ -624,7 +629,7 @@ nodes=TestPage
 							$canonicalLabel = $prop;
 							$preferredLabel = $property->getPreferredLabel();
 						}
-					} else if ( $prop == $label ) {
+					} elseif ( $prop == $label ) {
 						$canonicalLabel = $property->getCanonicalLabel();
 						$preferredLabel = $property->getPreferredLabel();
 					}
