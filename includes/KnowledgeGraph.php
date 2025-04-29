@@ -562,11 +562,13 @@ nodes=TestPage
 	 * @param array|null $paramProperties Optional properties to be applied (null if none)
 	 * @return array
 	 */
-	public static function setSemanticData( Title $title,
-											$onlyProperties,
-											$depth,
-											$maxDepth,
-											$paramProperties = null ) {
+	public static function setSemanticData(
+		Title $title,
+		$onlyProperties,
+		$depth,
+		$maxDepth,
+		$paramProperties = null
+	) {
 		$services = MediaWikiServices::getInstance();
 		$langCode = \RequestContext::getMain()->getLanguage()->getCode();
 		$propertyRegistry = \SMW\PropertyRegistry::getInstance();
