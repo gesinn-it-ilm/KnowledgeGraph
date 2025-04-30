@@ -239,7 +239,7 @@ nodes=TestPage
 			$title_ = TitleClass::newFromText( $titleText );
 			if ( $title_ && $title_->isKnown() ) {
 				if ( !isset( self::$data[$title_->getFullText()] ) ) {
-					self::setSemanticData( $title_, $params['properties'], 0, 0 );
+					self::setSemanticData( $title_, $params['properties'], 0, $params['depth'] );
 				}
 			}
 		}
@@ -277,7 +277,7 @@ nodes=TestPage
 
 				foreach ( $allInverseSubjects as $subjectTitle ) {
 					$key = $subjectTitle->getFullText();
-					self::setSemanticData( $subjectTitle, [], 0, 1, $paramProperties );
+					self::setSemanticData( $subjectTitle, $params['properties'], 0, $params['depth'], $paramProperties );
 				}
 			}
 		}
@@ -623,6 +623,7 @@ nodes=TestPage
 				continue;
 			}
 
+			// the part used to handle label value in graph
 			if ( isset( $paramProperties ) ) {
 				$label = $property->getLabel();
 				foreach ( $paramProperties as $prop ) {
@@ -630,10 +631,18 @@ nodes=TestPage
 						if ( strpos( $prop, '-' ) === 0 ) {
 							$canonicalLabel = $prop;
 							$preferredLabel = $property->getPreferredLabel();
+						} else {
+							$canonicalLabel = $property->getCanonicalLabel();
+							$preferredLabel = $property->getPreferredLabel();
 						}
 					} elseif ( $prop == $label ) {
 						$canonicalLabel = $property->getCanonicalLabel();
 						$preferredLabel = $property->getPreferredLabel();
+					} else {
+						if ( !isset($canonicalLabel)) {
+							$canonicalLabel = $property->getCanonicalLabel();
+							$preferredLabel = $property->getPreferredLabel();
+						}
 					}
 				}
 			} else {
@@ -641,12 +650,13 @@ nodes=TestPage
 				$preferredLabel = $property->getPreferredLabel();
 			}
 
-			if ( count( $onlyProperties )
-				&& !in_array( $canonicalLabel, $onlyProperties )
-				&& !in_array( $preferredLabel, $onlyProperties )
-			) {
-				continue;
-			}
+			// temporary commented during testing
+			// if ( count( $onlyProperties )
+			// 	&& !in_array( $canonicalLabel, $onlyProperties )
+			// 	&& !in_array( $preferredLabel, $onlyProperties )
+			// ) {
+			// 	continue;
+			// }
 
 			$description = $propertyRegistry->findPropertyDescriptionMsgKeyById( $key );
 			$typeID = $property->findPropertyTypeID();
