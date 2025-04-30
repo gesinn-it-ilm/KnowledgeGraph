@@ -650,13 +650,12 @@ nodes=TestPage
 				$preferredLabel = $property->getPreferredLabel();
 			}
 
-			// temporary commented during testing
-			// if ( count( $onlyProperties )
-			// 	&& !in_array( $canonicalLabel, $onlyProperties )
-			// 	&& !in_array( $preferredLabel, $onlyProperties )
-			// ) {
-			// 	continue;
-			// }
+			if ( count( $onlyProperties )
+				&& !in_array( $canonicalLabel, $onlyProperties )
+				&& !in_array( $preferredLabel, $onlyProperties )
+			) {
+				continue;
+			}
 
 			$description = $propertyRegistry->findPropertyDescriptionMsgKeyById( $key );
 			$typeID = $property->findPropertyTypeID();
