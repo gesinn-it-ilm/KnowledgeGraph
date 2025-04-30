@@ -235,14 +235,31 @@ nodes=TestPage
 			}
 		}
 
+		$visitedNode = '';
+		$visitedNodes = []; 
 		foreach ( $params['nodes'] as $titleText ) {
 			$title_ = TitleClass::newFromText( $titleText );
 			if ( $title_ && $title_->isKnown() ) {
 				if ( !isset( self::$data[$title_->getFullText()] ) ) {
-					self::setSemanticData( $title_, $params['properties'], 0, $params['depth'] );
+
+					if ( $visitedNode != '' ) {
+						continue;
+					}
+					$visitedNode = $title_->getFullText();
+					self::setSemanticData( $title_, $params['properties'], 0, $params['depth'], $params['properties'], false );
+					$visitedNodes[$title_->getFullText()] = true;
+				}
+
+				// check all inversive relationships 
+				foreach ( $params['properties'] as $property ) {
+					if ( strpos( $property, '-' ) === 0 ) {
+						$inverseProperty = ltrim( $property, '-' );
+						self::processInverseRecursively( $inverseProperty, $title_, 0, $params['depth'], $params['properties'], $visitedNodes );
+					}
 				}
 			}
 		}
+
 
 		$graphOptions = [];
 		if ( !empty( $params['graph-options'] ) ) {
@@ -262,23 +279,6 @@ nodes=TestPage
 				$propertyOptions[$property] = self::getWikipageContent( $title_ );
 			} else {
 				unset( $propertyOptions[$property] );
-			}
-		}
-
-		// enable inverse properties in graphs
-		foreach ( $params['properties'] as $property ) {
-			$startTitle = Title::newFromText( $params['nodes'][0] );
-			$visited = [];
-			$paramProperties = $params['properties'];
-
-			if ( strpos( $property, '-' ) === 0 ) {
-				$inverseProperty = ltrim( $property, '-' );
-				$allInverseSubjects = self::getAllInverseSubjects( $inverseProperty, $startTitle, $visited );
-
-				foreach ( $allInverseSubjects as $subjectTitle ) {
-					$key = $subjectTitle->getFullText();
-					self::setSemanticData( $subjectTitle, $params['properties'], 0, $params['depth'], $paramProperties );
-				}
 			}
 		}
 
@@ -303,6 +303,44 @@ nodes=TestPage
 	}
 
 	/**
+	 * Recursively processes all pages that link to the given title via the specified inverse property.
+	 *
+	 * This function traverses the semantic inverse relation defined by the property,
+	 * and invokes setSemanticData for each subject found, until the maximum depth is reached.
+	 *
+	 * @param string $property The name of the semantic property (without the "-" prefix)
+	 * @param Title $title The current title node being processed
+	 * @param int $depth The current recursion depth
+	 * @param int $maxDepth The maximum allowed depth to traverse
+	 * @param array $properties The list of properties to pass to setSemanticData
+	 * @param array &$visitedNodes A reference to a list of already visited node titles (to prevent cycles)
+	 * @return void
+	 */
+	private static function processInverseRecursively( $property, Title $title, int $depth, int $maxDepth, array $properties, array &$visitedNodes ) {
+		if ( $depth >= $maxDepth ) {
+			return;
+		}
+	
+		$visited = [];
+		$inverseSubjects = self::getAllInverseSubjects( $property, $title, $visited );
+	
+		if ( !isset( $inverseSubjects ) ) {
+			return;
+		}
+	
+		foreach ( $inverseSubjects as $subjectTitle ) {
+			$key = $subjectTitle->getFullText();
+			if ( isset( $visitedNodes[$key] ) ) {
+				continue;
+			}
+	
+			$visitedNodes[$key] = true;
+			self::setSemanticData( $subjectTitle, $properties, $depth, $maxDepth, $properties, true );
+			self::processInverseRecursively( $property, $subjectTitle, $depth + 1, $maxDepth, $properties, $visitedNodes );
+		}
+	}
+
+	/**
 	 * Returns all pages that link to the given node via the specified property, recursively.
 	 *
 	 * @param string $property Property name (e.g. "Links To" or "-Links To")
@@ -320,27 +358,17 @@ nodes=TestPage
 		}
 
 		$visited[$targetKey] = true;
-
+		$isInverse = false;
 		$cleanPropertyName = ltrim( $property, '-' );
 		$propertyDI = \SMW\DIProperty::newFromUserLabel( $cleanPropertyName );
+		$propertyDI = new \SMW\DIProperty($cleanPropertyName, $isInverse);
 
-		$inverseSubjects = self::getSubjectsByProperty(
+		$results = self::getSubjectsByProperty(
 			$propertyDI,
 			$limit,
 			0,
 			$targetTitle
 		);
-
-		foreach ( $inverseSubjects as $subjectTitle ) {
-			$subjectKey = $subjectTitle->getFullText();
-			if ( !isset( $visited[$subjectKey] ) ) {
-				$results[] = $subjectTitle;
-				$results = array_merge(
-					$results,
-					self::getAllInverseSubjects( $property, $subjectTitle, $visited, $limit )
-				);
-			}
-		}
 
 		return $results;
 	}
@@ -567,7 +595,8 @@ nodes=TestPage
 		$onlyProperties,
 		$depth,
 		$maxDepth,
-		$paramProperties = null
+		$paramProperties = null,
+		$isInverse = false
 	) {
 		$services = MediaWikiServices::getInstance();
 		$langCode = \RequestContext::getMain()->getLanguage()->getCode();
@@ -628,12 +657,14 @@ nodes=TestPage
 				$label = $property->getLabel();
 				foreach ( $paramProperties as $prop ) {
 					if ( str_contains( $prop, $label ) ) {
-						if ( strpos( $prop, '-' ) === 0 ) {
+						if ( strpos( $prop, '-' ) === 0 && $isInverse ) {
 							$canonicalLabel = $prop;
 							$preferredLabel = $property->getPreferredLabel();
 						} else {
-							$canonicalLabel = $property->getCanonicalLabel();
-							$preferredLabel = $property->getPreferredLabel();
+							if ( !isset($canonicalLabel) && !$isInverse ) {
+								$canonicalLabel = $property->getCanonicalLabel();
+								$preferredLabel = $property->getPreferredLabel();
+							}
 						}
 					} elseif ( $prop == $label ) {
 						$canonicalLabel = $property->getCanonicalLabel();
