@@ -239,27 +239,59 @@ nodes=TestPage
 		$visitedNodes = []; 
 		foreach ( $params['nodes'] as $titleText ) {
 			$title_ = TitleClass::newFromText( $titleText );
-			if ( $title_ && $title_->isKnown() ) {
-				if ( !isset( self::$data[$title_->getFullText()] ) ) {
+			if ( !$title_ || !$title_->isKnown() ) {
+				continue;
+			}
+		
+			$semanticProperties = self::getSemanticPropertiesForTitle( $title_ );
+			$visitedNodes[$title_->getFullText()] = true;
 
-					if ( $visitedNode != '' ) {
-						continue;
-					}
-					$visitedNode = $title_->getFullText();
-					self::setSemanticData( $title_, $params['properties'], 0, $params['depth'], $params['properties'], false );
-					$visitedNodes[$title_->getFullText()] = true;
+			foreach ( $params['properties'] as $propertyText ) {
+				$isInverse = false;
+				$propertyName = $propertyText;
+		
+				if ( strpos( $propertyText, '-' ) === 0 ) {
+					$isInverse = true;
 				}
-
-				// check all inversive relationships 
-				foreach ( $params['properties'] as $property ) {
-					if ( strpos( $property, '-' ) === 0 ) {
-						$inverseProperty = ltrim( $property, '-' );
-						self::processInverseRecursively( $inverseProperty, $title_, 0, $params['depth'], $params['properties'], $visitedNodes );
+		
+				if ( $isInverse ) {
+					self::processInverseRecursively(
+						$propertyName,
+						$title_,
+						0,
+						$params['depth'],
+						$params['properties'],
+						$visitedNodes
+					);
+				} else {
+					if ( array_key_exists( $propertyName, $semanticProperties ) ) {
+						self::setSemanticData(
+							$title_,
+							[ $propertyName ],
+							0,
+							$params['depth'],
+							$params['properties'],
+							false
+						);
+		
+						// check for the node if there are existing inverse properties
+						foreach ( $semanticProperties[$propertyName] as $dataValue ) {
+							$linkedTitle = $dataValue->getTitle();
+							if ( $linkedTitle ) {				
+								self::exploreRecursively(
+									$linkedTitle,
+									0,
+									$params['depth'],
+									$params['properties'],
+									$visitedNodes
+								);
+								$visitedNodes[$linkedTitle->getFullText()] = true;
+							}
+						}
 					}
 				}
 			}
 		}
-
 
 		$graphOptions = [];
 		if ( !empty( $params['graph-options'] ) ) {
@@ -303,6 +335,106 @@ nodes=TestPage
 	}
 
 	/**
+	 * Recursively explores semantic property links from a given title up to a maximum depth.
+	 *
+	 * This method traverses semantic relations (both direct and inverse) for the specified properties
+	 * and collects or processes linked data. It avoids cycles by keeping track of visited nodes.
+	 *
+	 * @param Title $title The starting MediaWiki title for traversal.
+	 * @param int $depth The current recursion depth.
+	 * @param int $maxDepth The maximum recursion depth allowed.
+	 * @param array $properties A list of semantic property names to follow. A property prefixed with '-' indicates inverse relation.
+	 * @param array<string, bool> &$visitedNodes An associative array tracking visited page titles to prevent infinite loops.
+	 *
+	 * @return void
+	 */
+	private static function exploreRecursively(
+		Title $title,
+		int $depth,
+		int $maxDepth,
+		array $properties,
+		array &$visitedNodes
+	) {
+		$visitedNodes[$title->getFullText()] = true;
+	
+		$semanticProps = self::getSemanticPropertiesForTitle( $title );
+		
+		foreach ( $properties as $prop ) {
+			$isInverse = false;
+			$propertyName = $prop;
+	
+			if ( strpos( $prop, '-' ) === 0 ) {
+				$isInverse = true;
+			}
+	
+			if ( $isInverse ) {
+				self::processInverseRecursively(
+					$propertyName,
+					$title,
+					$depth,
+					$maxDepth,
+					$properties,
+					$visitedNodes
+				);
+			} else {
+				if ( array_key_exists( $propertyName, $semanticProps ) ) {
+					self::setSemanticData(
+						$title,
+						[ $propertyName ],
+						$depth,
+						$maxDepth,
+						$properties,
+						false
+					);
+					foreach ( $semanticProps[$propertyName] as $dataValue ) {
+						$linkedTitle = $dataValue->getTitle();
+						if ( $linkedTitle ) {
+							self::exploreRecursively(
+								$linkedTitle,
+								$depth + 1,
+								$maxDepth,
+								$properties,
+								$visitedNodes
+							);
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	/**
+	 * Retrieves all semantic properties and their values for a given title.
+	 *
+	 * This method uses Semantic MediaWiki's data store to fetch semantic data
+	 * associated with the given title. It returns an associative array where the
+	 * keys are property labels and the values are arrays of property values.
+	 *
+	 * @param Title $title The MediaWiki title object for which semantic properties should be retrieved.
+	 *
+	 * @return array<string, \SMW\DataValue[]> An associative array of semantic property labels to their respective values.
+	 *                                         Each value is an array of SMW DataValue objects. Returns an empty array if
+	 *                                         no semantic data is available.
+	 */
+	private static function getSemanticPropertiesForTitle( $title ) {
+		$subject = new \SMW\DIWikiPage( $title->getDBkey(), $title->getNamespace() );
+		$semanticData = \SMW\StoreFactory::getStore()->getSemanticData( $subject );
+	
+		if ( !$semanticData ) {
+			return [];
+		}
+	
+		$properties = [];
+		foreach ( $semanticData->getProperties() as $property ) {
+			$values = $semanticData->getPropertyValues( $property );
+			if ( count( $values ) > 0 ) {
+				$properties[ $property->getLabel() ] = $values;
+			}
+		}
+		return $properties;
+	}
+
+	/**
 	 * Recursively processes all pages that link to the given title via the specified inverse property.
 	 *
 	 * This function traverses the semantic inverse relation defined by the property,
@@ -317,9 +449,10 @@ nodes=TestPage
 	 * @return void
 	 */
 	private static function processInverseRecursively( $property, Title $title, int $depth, int $maxDepth, array $properties, array &$visitedNodes ) {
-		if ( $depth >= $maxDepth ) {
-			return;
-		}
+		// TODO - check and implement the depth limit
+		// if ( $depth >= $maxDepth ) {
+		// 	return;
+		// }
 	
 		$visited = [];
 		$inverseSubjects = self::getAllInverseSubjects( $property, $title, $visited );
@@ -329,13 +462,34 @@ nodes=TestPage
 		}
 	
 		foreach ( $inverseSubjects as $subjectTitle ) {
+			$subject = new \SMW\DIWikiPage( $subjectTitle->getDbKey(), $subjectTitle->getNamespace() );
+			$semanticData = self::$SMWStore->getSemanticData( $subject );
+
 			$key = $subjectTitle->getFullText();
 			if ( isset( $visitedNodes[$key] ) ) {
 				continue;
 			}
-	
+			$semanticProps = self::getSemanticPropertiesForTitle( $subjectTitle );
+
+			foreach ( $semanticProps as $value ) {
+				if ( $value[0] instanceof \SMW\DIWikiPage ) {
+					$dbKey = $value[0]->getDBkey();
+					
+					if ($dbKey === $title->getDBkey()) {
+						foreach ( $semanticData->getProperties() as $propertyNew ) {
+							$key = $propertyNew->getKey();
+							$key = str_replace( [ ' ', '_' ], ' ', $key );
+							if ( ( strpos( $property, $key ) ) !== false && strpos( $property, '-' ) === 0 ) {
+								$propertyNew->setInverse( true );
+							}
+						}
+						$isInverse = true;
+						self::setSemanticData( $subjectTitle, $properties, $depth, $maxDepth, $properties, $isInverse );
+					}
+				}
+			}
+
 			$visitedNodes[$key] = true;
-			self::setSemanticData( $subjectTitle, $properties, $depth, $maxDepth, $properties, true );
 			self::processInverseRecursively( $property, $subjectTitle, $depth + 1, $maxDepth, $properties, $visitedNodes );
 		}
 	}
@@ -343,7 +497,7 @@ nodes=TestPage
 	/**
 	 * Returns all pages that link to the given node via the specified property, recursively.
 	 *
-	 * @param string $property Property name (e.g. "Links To" or "-Links To")
+	 * @param string $property Property name
 	 * @param Title $targetTitle The starting page (e.g. A)
 	 * @param array &$visited Internal tracking of already visited pages
 	 * @param int $limit Query result limit per request
@@ -358,10 +512,7 @@ nodes=TestPage
 		}
 
 		$visited[$targetKey] = true;
-		$isInverse = false;
-		$cleanPropertyName = ltrim( $property, '-' );
-		$propertyDI = \SMW\DIProperty::newFromUserLabel( $cleanPropertyName );
-		$propertyDI = new \SMW\DIProperty($cleanPropertyName, $isInverse);
+		$propertyDI = \SMW\DIProperty::newFromUserLabel( $property );
 
 		$results = self::getSubjectsByProperty(
 			$propertyDI,
@@ -408,7 +559,16 @@ nodes=TestPage
 			}
 		}
 
-		$results = self::$SMWStore->getPropertySubjects( $DIProperty, $targetDIValue, $requestOptions );
+		$results = [];
+		if ($propertyText->isInverse()) {
+			$props = $propertyText->getKey();
+			$props = str_replace( '-', '', $props );
+			$propertyText = \SMW\DIProperty::newFromUserLabel( $props );
+			$results = self::$SMWStore->getPropertySubjects( $propertyText, $targetDIValue, $requestOptions );
+			$propertyText->setInverse( true );
+		} else {
+			$results = self::$SMWStore->getPropertySubjects( $DIProperty, $targetDIValue, $requestOptions );
+		}
 
 		$ret = [];
 		foreach ( $results as $result ) {
@@ -652,34 +812,8 @@ nodes=TestPage
 				continue;
 			}
 
-			// the part used to handle label value in graph
-			if ( isset( $paramProperties ) ) {
-				$label = $property->getLabel();
-				foreach ( $paramProperties as $prop ) {
-					if ( str_contains( $prop, $label ) ) {
-						if ( strpos( $prop, '-' ) === 0 && $isInverse ) {
-							$canonicalLabel = $prop;
-							$preferredLabel = $property->getPreferredLabel();
-						} else {
-							if ( !isset($canonicalLabel) && !$isInverse ) {
-								$canonicalLabel = $property->getCanonicalLabel();
-								$preferredLabel = $property->getPreferredLabel();
-							}
-						}
-					} elseif ( $prop == $label ) {
-						$canonicalLabel = $property->getCanonicalLabel();
-						$preferredLabel = $property->getPreferredLabel();
-					} else {
-						if ( !isset($canonicalLabel)) {
-							$canonicalLabel = $property->getCanonicalLabel();
-							$preferredLabel = $property->getPreferredLabel();
-						}
-					}
-				}
-			} else {
-				$canonicalLabel = $property->getCanonicalLabel();
-				$preferredLabel = $property->getPreferredLabel();
-			}
+			$canonicalLabel = $property->getCanonicalLabel();
+			$preferredLabel = $property->getPreferredLabel();
 
 			if ( count( $onlyProperties )
 				&& !in_array( $canonicalLabel, $onlyProperties )
@@ -714,6 +848,7 @@ nodes=TestPage
 				'description' => $description,
 				'values' => [],
 			];
+			$property->setInverse( false );
 
 			foreach ( $semanticData->getPropertyValues( $property ) as $dataItem ) {
 				$dataValue = self::$SMWDataValueFactory->newDataValueByItem( $dataItem, $property );
