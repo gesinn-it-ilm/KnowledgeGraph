@@ -247,6 +247,10 @@ nodes=TestPage
 			$visitedNodes[$title_->getFullText()] = true;
 
 			foreach ( $params['properties'] as $propertyText ) {
+				if ( $params['depth'] < 1 ) {
+					continue;
+				}
+
 				$isInverse = false;
 				$propertyName = $propertyText;
 
@@ -267,7 +271,7 @@ nodes=TestPage
 					if ( array_key_exists( $propertyName, $semanticProperties ) ) {
 						self::setSemanticData(
 							$title_,
-							[ $propertyName ],
+							$params['properties'],
 							0,
 							$params['depth'],
 							$params['properties'],
@@ -280,7 +284,7 @@ nodes=TestPage
 							if ( $linkedTitle ) {
 								self::exploreRecursively(
 									$linkedTitle,
-									0,
+									1,
 									$params['depth'],
 									$params['properties'],
 									$visitedNodes
@@ -355,8 +359,11 @@ nodes=TestPage
 		array $properties,
 		array &$visitedNodes
 	) {
-		$visitedNodes[$title->getFullText()] = true;
+		if ( $depth >= $maxDepth ) {
+			return;
+		}
 
+		$visitedNodes[$title->getFullText()] = true;
 		$semanticProps = self::getSemanticPropertiesForTitle( $title );
 
 		foreach ( $properties as $prop ) {
@@ -376,29 +383,6 @@ nodes=TestPage
 					$properties,
 					$visitedNodes
 				);
-			} else {
-				if ( array_key_exists( $propertyName, $semanticProps ) ) {
-					self::setSemanticData(
-						$title,
-						[ $propertyName ],
-						$depth,
-						$maxDepth,
-						$properties,
-						false
-					);
-					foreach ( $semanticProps[$propertyName] as $dataValue ) {
-						$linkedTitle = $dataValue->getTitle();
-						if ( $linkedTitle ) {
-							self::exploreRecursively(
-								$linkedTitle,
-								$depth + 1,
-								$maxDepth,
-								$properties,
-								$visitedNodes
-							);
-						}
-					}
-				}
 			}
 		}
 	}
@@ -456,10 +440,9 @@ nodes=TestPage
 		array $properties,
 		array &$visitedNodes
 	) {
-		// TODO - check and implement the depth limit
-		// if ( $depth >= $maxDepth ) {
-		// 	return;
-		// }
+		if ( $depth >= $maxDepth ) {
+			return;
+		}
 
 		$visited = [];
 		$inverseSubjects = self::getAllInverseSubjects( $property, $title, $visited );
@@ -773,6 +756,10 @@ nodes=TestPage
 		$paramProperties = null,
 		$isInverse = false
 	) {
+		if ( $depth >= $maxDepth ) {
+			return;
+		}
+
 		$services = MediaWikiServices::getInstance();
 		$langCode = \RequestContext::getMain()->getLanguage()->getCode();
 		$propertyRegistry = \SMW\PropertyRegistry::getInstance();
