@@ -920,6 +920,12 @@ ${propertyOptions}|show-property-type=true
 				return;
 			}
 			var nodeId = params.nodes[0];
+			var node = Nodes.get(nodeId);
+			var wikiBaseUrl = mw.config.get('wgArticlePath').replace('$1', '');
+
+			// open clicked node in new tab
+			var pageUrl = (node && node.url) ? node.url : wikiBaseUrl + encodeURIComponent(nodeId);
+			window.open(pageUrl, '_blank');
 
 			if (!(nodeId in Data) || Data[nodeId] === null) {
 				loadNodes({
