@@ -309,7 +309,7 @@ KnowledgeGraph = function () {
 					}
 
 					if (direction === 'inverse') {
-						labelText =	'←' + propLabel;
+						labelText =	'-' + propLabel;
 					} else {
 						labelText = propLabel;
 					}

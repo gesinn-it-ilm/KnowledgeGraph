@@ -646,103 +646,12 @@ nodes=TestPage
 
 			// check inverse properties
 			if ( count( $onlyProperties ) ) {
-				$inverseProps = array_filter( $onlyProperties, static function ( $property ) {
-					return strpos( $property, '-' ) === 0;
-				} );
-
-				foreach ( $inverseProps as $inversePropertyLabel ) {
-					$cleanLabel = ltrim( $inversePropertyLabel, '-' );
-					$propertyDI = \SMW\DIProperty::newFromUserLabel( $cleanLabel );
-
-					$results = self::getSubjectsByProperty(
-						$propertyDI,
-						$limit,
-						0,
-						$fullTitleText
-					);
-
-					$nodes = [];
-					foreach ( $results as $subjectDI ) {
-						$sourceTitle = Title::newFromText( $subjectDI->getDBkey(), $subjectDI->getNamespace() );
-						if ( !in_array( $sourceTitle->getFullText(), $nodes, true ) ) {
-							$nodes[] = $sourceTitle->getFullText();
-						}
-					}
-
-					foreach ( $results as $subjectDI ) {
-						$sourceTitle = Title::newFromText( $subjectDI->getDBkey(), $subjectDI->getNamespace() );
-						if ( $sourceTitle ) {
-
-							if ( in_array( $sourceTitle->getFullText(), $visited ) ) {
-								continue;
-							}
-
-							self::addEdge( $sourceTitle->getFullText(), $fullTitleText, $cleanLabel, 'inverse' );
-
-							if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
-								if ( $depth < $maxDepth ) {
-									self::setSemanticData(
-										$sourceTitle,
-										$onlyProperties,
-										$depth + 1,
-										$maxDepth,
-										$visited
-									);
-								} else {
-									self::$data[$sourceTitle->getFullText()] = null;
-								}
-							}
-						}
-					}
-				}
+				self::processInverseProperties( $title, $onlyProperties, $depth, $maxDepth, $visited );
 			}
 		}
 
-		// check inverse properties
 		if ( count( $onlyProperties ) ) {
-			$inverseProps = array_filter( $onlyProperties, static function ( $property ) {
-				return strpos( $property, '-' ) === 0;
-			} );
-
-			foreach ( $inverseProps as $inversePropertyLabel ) {
-				$cleanLabel = ltrim( $inversePropertyLabel, '-' );
-				$propertyDI = \SMW\DIProperty::newFromUserLabel( $cleanLabel );
-
-				$results = self::getSubjectsByProperty(
-					$propertyDI,
-					$limit,
-					0,
-					$fullTitleText
-				);
-
-				$nodes = [];
-				foreach ( $results as $subjectDI ) {
-					$sourceTitle = Title::newFromText( $subjectDI->getDBkey(), $subjectDI->getNamespace() );
-					if ( !in_array( $sourceTitle->getFullText(), $nodes, true ) ) {
-						$nodes[] = $sourceTitle->getFullText();
-					}
-				}
-
-				foreach ( $results as $subjectDI ) {
-					$sourceTitle = Title::newFromText( $subjectDI->getDBkey(), $subjectDI->getNamespace() );
-					if ( $sourceTitle ) {
-
-						if ( in_array( $sourceTitle->getFullText(), $visited ) ) {
-							continue;
-						}
-
-						self::addEdge( $sourceTitle->getFullText(), $fullTitleText, $cleanLabel, 'inverse' );
-
-						if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
-							if ( $depth < $maxDepth ) {
-								self::setSemanticData( $sourceTitle, $onlyProperties, $depth + 1, $maxDepth, $visited );
-							} else {
-								self::$data[$sourceTitle->getFullText()] = null;
-							}
-						}
-					}
-				}
-			}
+			self::processInverseProperties( $title, $onlyProperties, $depth, $maxDepth, $visited );
 		}
 
 		$output['edges'] = array_values( array_filter(
@@ -753,6 +662,78 @@ nodes=TestPage
 		) );
 
 		self::$data[$fullTitleText] = $output;
+	}
+
+	/**
+	 * Processes inverse semantic properties for a given title.
+	 *
+	 * This method identifies all properties in the $onlyProperties array that are marked
+	 * as inverse (i.e., prefixed with a '-') and retrieves subjects that reference the given
+	 * title through those inverse properties.
+	 *
+	 * @param Title $title The page title to process.
+	 * @param array $onlyProperties An array of property labels to consider, including inverse ones prefixed with '-'.
+	 * @param int $depth Current recursion depth.
+	 * @param int $maxDepth Maximum allowed recursion depth.
+	 * @param array &$visited A list of titles already visited, to prevent infinite loops.
+	 */
+	private static function processInverseProperties(
+		Title $title,
+		array $onlyProperties,
+		int $depth,
+		int $maxDepth,
+		array &$visited
+	): void {
+		$fullTitleText = $title->getFullText();
+
+		$inverseProps = array_filter( $onlyProperties, static function ( $property ) {
+			return strpos( $property, '-' ) === 0;
+		} );
+
+		foreach ( $inverseProps as $inversePropertyLabel ) {
+			$cleanLabel = ltrim( $inversePropertyLabel, '-' );
+			$propertyDI = \SMW\DIProperty::newFromUserLabel( $cleanLabel );
+
+			$results = self::getSubjectsByProperty(
+				$propertyDI,
+				$limit,
+				0,
+				$fullTitleText
+			);
+
+			$nodes = [];
+			foreach ( $results as $subjectDI ) {
+				$sourceTitle = Title::newFromText( $subjectDI->getDBkey(), $subjectDI->getNamespace() );
+				if ( $sourceTitle && !in_array( $sourceTitle->getFullText(), $nodes, true ) ) {
+					$nodes[] = $sourceTitle->getFullText();
+				}
+			}
+
+			foreach ( $results as $subjectDI ) {
+				$sourceTitle = Title::newFromText( $subjectDI->getDBkey(), $subjectDI->getNamespace() );
+				if ( $sourceTitle ) {
+					if ( in_array( $sourceTitle->getFullText(), $visited, true ) ) {
+						continue;
+					}
+
+					self::addEdge( $sourceTitle->getFullText(), $fullTitleText, $cleanLabel, 'inverse' );
+
+					if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
+						if ( $depth < $maxDepth ) {
+							self::setSemanticData(
+								$sourceTitle,
+								$onlyProperties,
+								$depth + 1,
+								$maxDepth,
+								$visited
+							);
+						} else {
+							self::$data[$sourceTitle->getFullText()] = null;
+						}
+					}
+				}
+			}
+		}
 	}
 
 	/**
