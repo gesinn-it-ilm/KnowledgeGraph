@@ -231,9 +231,8 @@ KnowledgeGraph = function () {
 		);
 
 		if (!(label in data)) {
-			nodeConfig.color.border = 'red';
 			nodeConfig.font.color = 'red';
-			nodeConfig.color.background = 'white';
+			nodeConfig.color = options.color;
 		}
 
 		if (data[label] === null) {
@@ -254,7 +253,8 @@ KnowledgeGraph = function () {
 	}
 
 	function createNodes(data) {
-		const addedEdges = new Set(); 
+		const addedEdges = new Set();
+		var options = []; 
 		for (var label in data) {
 			if (label in Data && Data[label] !== null) {
 				continue;
@@ -279,13 +279,6 @@ KnowledgeGraph = function () {
 					}
 					addedEdges.add(edgeKey);
 
-					if (!Nodes.get(from)) {
-						addArticleNode(data, from);
-					}
-					if (!Nodes.get(to)) {
-						addArticleNode(data, to);
-					}
-
 					if (!(propLabel in PropColors)) {
 						let color_;
 						do {
@@ -293,6 +286,19 @@ KnowledgeGraph = function () {
 						} while (Object.values(PropColors).includes(color_));
 						PropColors[propLabel] = color_;
 					}
+					
+					if (!('color' in options)) {
+						options.color = PropColors[propLabel];
+					}
+
+					if (!Nodes.get(from)) {
+						addArticleNode(data, from, options);
+					}
+					if (!Nodes.get(to)) {
+						addArticleNode(data, to, options);
+					}
+
+					options = []
 
 					if (Config['properties-panel']) {
 						addLegendEntry(
@@ -303,7 +309,7 @@ KnowledgeGraph = function () {
 					}
 
 					if (direction === 'inverse') {
-						labelText =	'← ' + propLabel;
+						labelText =	'←' + propLabel;
 					} else {
 						labelText = propLabel;
 					}
