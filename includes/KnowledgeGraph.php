@@ -50,6 +50,13 @@ class KnowledgeGraph {
 	 */
 	public static $data = [];
 
+	/**
+	 * An array to hold edges for the knowledge graph.
+	 *
+	 * @var array
+	 */
+	public static $edges = [];
+
 	public static function initSMW() {
 		if ( !defined( 'SMW_VERSION' ) ) {
 			return;
@@ -235,64 +242,12 @@ nodes=TestPage
 			}
 		}
 
-		$visitedNode = '';
-		$visitedNodes = [];
+		$visited = [];
 		foreach ( $params['nodes'] as $titleText ) {
 			$title_ = TitleClass::newFromText( $titleText );
-			if ( !$title_ || !$title_->isKnown() ) {
-				continue;
-			}
-
-			$semanticProperties = self::getSemanticPropertiesForTitle( $title_ );
-			$visitedNodes[$title_->getFullText()] = true;
-
-			foreach ( $params['properties'] as $propertyText ) {
-				if ( $params['depth'] < 1 ) {
-					continue;
-				}
-
-				$isInverse = false;
-				$propertyName = $propertyText;
-
-				if ( strpos( $propertyText, '-' ) === 0 ) {
-					$isInverse = true;
-				}
-
-				if ( $isInverse ) {
-					self::processInverseRecursively(
-						$propertyName,
-						$title_,
-						0,
-						$params['depth'],
-						$params['properties'],
-						$visitedNodes
-					);
-				} else {
-					if ( array_key_exists( $propertyName, $semanticProperties ) ) {
-						self::setSemanticData(
-							$title_,
-							$params['properties'],
-							0,
-							$params['depth'],
-							$params['properties'],
-							false
-						);
-
-						// check for the node if there are existing inverse properties
-						foreach ( $semanticProperties[$propertyName] as $dataValue ) {
-							$linkedTitle = $dataValue->getTitle();
-							if ( $linkedTitle ) {
-								self::exploreRecursively(
-									$linkedTitle,
-									1,
-									$params['depth'],
-									$params['properties'],
-									$visitedNodes
-								);
-								$visitedNodes[$linkedTitle->getFullText()] = true;
-							}
-						}
-					}
+			if ( $title_ && $title_->isKnown() ) {
+				if ( !isset( self::$data[$title_->getFullText()] ) ) {
+					self::setSemanticData( $title_, $params['properties'], 0, $params['depth'], $visited );
 				}
 			}
 		}
@@ -339,193 +294,9 @@ nodes=TestPage
 	}
 
 	/**
-	 * Recursively explores semantic property links from a given title up to a maximum depth.
-	 *
-	 * This method traverses semantic relations (both direct and inverse) for the specified properties
-	 * and collects or processes linked data. It avoids cycles by keeping track of visited nodes.
-	 *
-	 * @param Title $title The starting MediaWiki title for traversal.
-	 * @param int $depth The current recursion depth.
-	 * @param int $maxDepth The maximum recursion depth allowed.
-	 * @param array $properties A property prefixed with '-' indicates inverse relation.
-	 * @param array<string, bool> &$visitedNodes An array tracking visited page titles to prevent infinite loops.
-	 *
-	 * @return void
-	 */
-	private static function exploreRecursively(
-		Title $title,
-		int $depth,
-		int $maxDepth,
-		array $properties,
-		array &$visitedNodes
-	) {
-		if ( $depth >= $maxDepth ) {
-			return;
-		}
-
-		$visitedNodes[$title->getFullText()] = true;
-		$semanticProps = self::getSemanticPropertiesForTitle( $title );
-
-		foreach ( $properties as $prop ) {
-			$isInverse = false;
-			$propertyName = $prop;
-
-			if ( strpos( $prop, '-' ) === 0 ) {
-				$isInverse = true;
-			}
-
-			if ( $isInverse ) {
-				self::processInverseRecursively(
-					$propertyName,
-					$title,
-					$depth,
-					$maxDepth,
-					$properties,
-					$visitedNodes
-				);
-			}
-		}
-	}
-
-	/**
-	 * Retrieves all semantic properties and their values for a given title.
-	 *
-	 * This method uses Semantic MediaWiki's data store to fetch semantic data
-	 * associated with the given title. It returns an associative array where the
-	 * keys are property labels and the values are arrays of property values.
-	 *
-	 * @param Title $title The MediaWiki title object for which semantic properties should be retrieved.
-	 *
-	 * @return array<string, \SMW\DataValue[]> Array of property labels mapped to SMW values.
-	 *                                         Each value is an array of SMW DataValue objects.
-	 * 										   Returns an empty array if no semantic data is available.
-	 */
-	private static function getSemanticPropertiesForTitle( $title ) {
-		$subject = new \SMW\DIWikiPage( $title->getDBkey(), $title->getNamespace() );
-		$semanticData = \SMW\StoreFactory::getStore()->getSemanticData( $subject );
-
-		if ( !$semanticData ) {
-			return [];
-		}
-
-		$properties = [];
-		foreach ( $semanticData->getProperties() as $property ) {
-			$values = $semanticData->getPropertyValues( $property );
-			if ( count( $values ) > 0 ) {
-				$properties[ $property->getLabel() ] = $values;
-			}
-		}
-		return $properties;
-	}
-
-	/**
-	 * Recursively processes all pages that link to the given title via the specified inverse property.
-	 *
-	 * This function traverses the semantic inverse relation defined by the property,
-	 * and invokes setSemanticData for each subject found, until the maximum depth is reached.
-	 *
-	 * @param string $property The name of the semantic property (without the "-" prefix)
-	 * @param Title $title The current title node being processed
-	 * @param int $depth The current recursion depth
-	 * @param int $maxDepth The maximum allowed depth to traverse
-	 * @param array $properties The list of properties to pass to setSemanticData
-	 * @param array &$visitedNodes A reference to a list of already visited node titles (to prevent cycles)
-	 * @return void
-	 */
-	private static function processInverseRecursively(
-		$property,
-		Title $title,
-		int $depth,
-		int $maxDepth,
-		array $properties,
-		array &$visitedNodes
-	) {
-		if ( $depth >= $maxDepth ) {
-			return;
-		}
-
-		$visited = [];
-		$inverseSubjects = self::getAllInverseSubjects( $property, $title, $visited );
-
-		if ( !isset( $inverseSubjects ) ) {
-			return;
-		}
-
-		foreach ( $inverseSubjects as $subjectTitle ) {
-			$subject = new \SMW\DIWikiPage( $subjectTitle->getDbKey(), $subjectTitle->getNamespace() );
-			$semanticData = self::$SMWStore->getSemanticData( $subject );
-
-			$key = $subjectTitle->getFullText();
-			if ( isset( $visitedNodes[$key] ) ) {
-				continue;
-			}
-			$semanticProps = self::getSemanticPropertiesForTitle( $subjectTitle );
-
-			foreach ( $semanticProps as $value ) {
-				if ( $value[0] instanceof \SMW\DIWikiPage ) {
-					$dbKey = $value[0]->getDBkey();
-
-					if ( $dbKey === $title->getDBkey() ) {
-						foreach ( $semanticData->getProperties() as $propertyNew ) {
-							$key = $propertyNew->getKey();
-							$key = str_replace( [ ' ', '_' ], ' ', $key );
-							if ( ( strpos( $property, $key ) ) !== false && strpos( $property, '-' ) === 0 ) {
-								$propertyNew->setInverse( true );
-							}
-						}
-						$isInverse = true;
-						self::setSemanticData( $subjectTitle, $properties, $depth, $maxDepth, $properties, $isInverse );
-					}
-				}
-			}
-
-			$visitedNodes[$key] = true;
-			self::processInverseRecursively(
-				$property,
-				$subjectTitle,
-				$depth + 1,
-				$maxDepth,
-				$properties,
-				$visitedNodes
-			);
-		}
-	}
-
-	/**
-	 * Returns all pages that link to the given node via the specified property, recursively.
-	 *
-	 * @param string $property Property name
-	 * @param Title $targetTitle The starting page (e.g. A)
-	 * @param array &$visited Internal tracking of already visited pages
-	 * @param int $limit Query result limit per request
-	 * @return Title[] List of all related subject pages
-	 */
-	public static function getAllInverseSubjects( $property, Title $targetTitle, array &$visited = [], $limit = 100 ) {
-		$results = [];
-
-		$targetKey = $targetTitle->getFullText();
-		if ( isset( $visited[$targetKey] ) ) {
-			return $results;
-		}
-
-		$visited[$targetKey] = true;
-		$propertyDI = \SMW\DIProperty::newFromUserLabel( $property );
-
-		$results = self::getSubjectsByProperty(
-			$propertyDI,
-			$limit,
-			0,
-			$targetTitle
-		);
-
-		return $results;
-	}
-
-	/**
 	 * @param string $propertyText
 	 * @param int $limit
 	 * @param int $offset
-	 * @param string|Title|null $targetValue
 	 * @return array
 	 */
 	public static function getSubjectsByProperty( $propertyText, $limit = 100, $offset = 0, $targetValue = null ) {
@@ -576,7 +347,7 @@ nodes=TestPage
 		}
 		return $ret;
 	}
-
+	
 	/**
 	 * @param Title|MediaWiki\Title\Title $title $title
 	 * @return string|null
@@ -744,28 +515,19 @@ nodes=TestPage
 	 * @param array $onlyProperties
 	 * @param int $depth
 	 * @param int $maxDepth
-	 * @param array|null $paramProperties Optional properties to be applied (null if none)
-	 * @param bool $isInverse Whether to process inverse properties
 	 * @return array
 	 */
-	public static function setSemanticData(
-		Title $title,
-		$onlyProperties,
-		$depth,
-		$maxDepth,
-		$paramProperties = null,
-		$isInverse = false
-	) {
-		if ( $depth >= $maxDepth ) {
-			return;
-		}
-
+	public static function setSemanticData( Title $title, $onlyProperties, $depth, $maxDepth, array &$visited = [] ) {
 		$services = MediaWikiServices::getInstance();
 		$langCode = \RequestContext::getMain()->getLanguage()->getCode();
 		$propertyRegistry = \SMW\PropertyRegistry::getInstance();
 		$dataTypeRegistry = \SMW\DataTypeRegistry::getInstance();
 
 		$wikiPage = self::getWikiPage( $title );
+		$fullTitleText = $title->getFullText();
+		if ( !in_array( $fullTitleText, $visited, true ) ) {
+			$visited[] = $fullTitleText;
+		}
 
 		$categories = [];
 		$iterator = $wikiPage->getCategories();
@@ -774,14 +536,6 @@ nodes=TestPage
 			$text_ = $iterator->current()->getText();
 			$categories[] = $text_;
 			$iterator->next();
-
-			// if ( !array_key_exists( $text_, self::$categories ) ) {
-			// 	self::$categories[$text_] = [];
-			// }
-
-			// if ( !in_array( $title->getFullText(), self::$categories[$text_] ) ) {
-			// 	self::$categories[$text_][] = $title->getFullText();
-			// }
 		}
 
 		$output = [
@@ -796,9 +550,7 @@ nodes=TestPage
 			}
 		}
 
-		// ***important, this prevents infinite recursion
-		// no properties
-		self::$data[$title->getFullText()] = [];
+		self::$data[$fullTitleText] = [];
 
 		$subject = new \SMW\DIWikiPage( $title->getDbKey(), $title->getNamespace() );
 		$semanticData = self::$SMWStore->getSemanticData( $subject );
@@ -841,7 +593,6 @@ nodes=TestPage
 			$objKey = $propertyTitle->getFullText();
 
 			$output['properties'][$objKey] = [
-				// 'url' => $propertyTitle->getFullURL(),
 				'key' => $key,
 				'typeId' => $typeID,
 				'canonicalLabel' => $canonicalLabel,
@@ -850,27 +601,27 @@ nodes=TestPage
 				'description' => $description,
 				'values' => [],
 			];
-			$property->setInverse( false );
 
 			foreach ( $semanticData->getPropertyValues( $property ) as $dataItem ) {
 				$dataValue = self::$SMWDataValueFactory->newDataValueByItem( $dataItem, $property );
 				if ( $dataValue->isValid() ) {
-					// *** are they necessary ?
 					$dataValue->setOption( 'no.text.transformation', true );
 					$dataValue->setOption( 'form/short', true );
 
 					$obj_ = [];
+
 					if ( $typeID === '_wpg' ) {
 						$title_ = $dataItem->getTitle();
 						if ( $title_ && $title_->isKnown() ) {
 							if ( !isset( self::$data[$title_->getFullText()] ) ) {
 								if ( $depth < $maxDepth ) {
-									self::setSemanticData( $title_, $onlyProperties, ++$depth, $maxDepth );
+									self::addEdge( $fullTitleText, $title_->getFullText(), $canonicalLabel, 'direct' );
+									self::setSemanticData( $title_, $onlyProperties, $depth + 1, $maxDepth, $visited );
 								} else {
-									// not loaded
 									self::$data[$title_->getFullText()] = null;
 								}
 							}
+
 							$obj_['value'] = $title_->getFullText();
 
 							if ( $title_->getNamespace() === NS_FILE ) {
@@ -880,6 +631,7 @@ nodes=TestPage
 								}
 							}
 						} elseif ( !isset( self::$data[str_replace( '_', ' ', $dataValue->getWikiValue() )] ) ) {
+							self::addEdge( $fullTitleText, $title_->getFullText(), $canonicalLabel, 'direct' );
 							$obj_['value'] = str_replace( '_', ' ', $dataValue->getWikiValue() );
 						}
 					} else {
@@ -889,9 +641,128 @@ nodes=TestPage
 					$output['properties'][$objKey]['values'][] = $obj_;
 				}
 			}
+
+			if ( count( $onlyProperties ) ) {
+				$inverseProps = array_filter( $onlyProperties, static function ( $property ) {
+					return strpos( $property, '-' ) === 0;
+				} );
+
+				foreach ( $inverseProps as $inversePropertyLabel ) {
+					$cleanLabel = ltrim( $inversePropertyLabel, '-' );
+					$propertyDI = \SMW\DIProperty::newFromUserLabel( $cleanLabel );
+
+					$results = self::getSubjectsByProperty(
+						$propertyDI,
+						$limit,
+						0,
+						$fullTitleText
+					);
+
+					$nodes = [];
+					foreach ( $results as $subjectDI ) {
+						$sourceTitle = Title::newFromText( $subjectDI->getDBkey(), $subjectDI->getNamespace() );
+						if ( !in_array( $sourceTitle->getFullText(), $nodes, true ) ) {
+							$nodes[] = $sourceTitle->getFullText();
+						}
+					}
+
+					foreach ( $results as $subjectDI ) {
+						$sourceTitle = Title::newFromText( $subjectDI->getDBkey(), $subjectDI->getNamespace() );
+						if ( $sourceTitle ) {
+
+							if ( in_array( $sourceTitle->getFullText(), $visited ) ) {
+								continue;
+							}
+
+							self::addEdge( $sourceTitle->getFullText(), $fullTitleText, $cleanLabel, 'inverse' );
+
+							if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
+								if ( $depth < $maxDepth ) {
+									self::setSemanticData( $sourceTitle, $onlyProperties, $depth + 1, $maxDepth, $visited );
+								} else {
+									self::$data[$sourceTitle->getFullText()] = null;
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 
-		self::$data[$title->getFullText()] = $output;
+		if ( count( $onlyProperties ) ) {
+			$inverseProps = array_filter( $onlyProperties, static function ( $property ) {
+				return strpos( $property, '-' ) === 0;
+			} );
+
+			foreach ( $inverseProps as $inversePropertyLabel ) {
+				$cleanLabel = ltrim( $inversePropertyLabel, '-' );
+				$propertyDI = \SMW\DIProperty::newFromUserLabel( $cleanLabel );
+
+				$results = self::getSubjectsByProperty(
+					$propertyDI,
+					$limit,
+					0,
+					$fullTitleText
+				);
+
+				$nodes = [];
+				foreach ( $results as $subjectDI ) {
+					$sourceTitle = Title::newFromText( $subjectDI->getDBkey(), $subjectDI->getNamespace() );
+					if ( !in_array( $sourceTitle->getFullText(), $nodes, true ) ) {
+						$nodes[] = $sourceTitle->getFullText();
+					}
+				}
+
+				foreach ( $results as $subjectDI ) {
+					$sourceTitle = Title::newFromText( $subjectDI->getDBkey(), $subjectDI->getNamespace() );
+					if ( $sourceTitle ) {
+
+						if ( in_array( $sourceTitle->getFullText(), $visited ) ) {
+							continue;
+						}
+
+						self::addEdge( $sourceTitle->getFullText(), $fullTitleText, $cleanLabel, 'inverse' );
+
+						if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
+							if ( $depth < $maxDepth ) {
+								self::setSemanticData( $sourceTitle, $onlyProperties, $depth + 1, $maxDepth, $visited );
+							} else {
+								self::$data[$sourceTitle->getFullText()] = null;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		$output['edges'] = array_values( array_filter(
+			self::$edges,
+			static function ( $edge ) use ( $fullTitleText ) {
+				return $edge['source'] === $fullTitleText || $edge['target'] === $fullTitleText;
+			}
+		) );
+
+		self::$data[$fullTitleText] = $output;
 	}
 
+	private static function addEdge( $source, $target, $property, $direction ) {
+		foreach ( self::$edges as &$edge ) {
+			if (
+				$edge['source'] === $source &&
+				$edge['target'] === $target &&
+				$edge['property'] === $property
+			) {
+				if ( $direction === 'direct' && $edge['direction'] === 'inverse' ) {
+					$edge['direction'] = 'direct';
+				}
+				return;
+			}
+		}
+		self::$edges[] = [
+			'source' => $source,
+			'target' => $target,
+			'property' => $property,
+			'direction' => $direction,
+		];
+	}
 }

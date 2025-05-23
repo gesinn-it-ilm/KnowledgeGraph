@@ -254,6 +254,7 @@ KnowledgeGraph = function () {
 	}
 
 	function createNodes(data) {
+		const addedEdges = new Set(); 
 		for (var label in data) {
 			if (label in Data && Data[label] !== null) {
 				continue;
@@ -261,146 +262,80 @@ KnowledgeGraph = function () {
 
 			addArticleNode(data, label);
 
-			// not loaded
 			if (data[label] === null) {
 				continue;
+			}
+
+			if ('edges' in data[label]) {
+				for (const edge of data[label].edges) {
+					const from = edge.source;
+					const to = edge.target;
+					const propLabel = edge.property;
+					const direction = edge.direction;
+
+					const edgeKey = `${from}->${to}::${propLabel}::${edge.direction}`;
+					if (addedEdges.has(edgeKey)) {
+						continue;
+					}
+					addedEdges.add(edgeKey);
+
+					if (!Nodes.get(from)) {
+						addArticleNode(data, from);
+					}
+					if (!Nodes.get(to)) {
+						addArticleNode(data, to);
+					}
+
+					if (!(propLabel in PropColors)) {
+						let color_;
+						do {
+							color_ = KnowledgeGraphFunctions.randomHSL();
+						} while (Object.values(PropColors).includes(color_));
+						PropColors[propLabel] = color_;
+					}
+
+					if (Config['properties-panel']) {
+						addLegendEntry(
+							propLabel,
+							propLabel,
+							PropColors[propLabel]
+						);
+					}
+
+					if (direction === 'inverse') {
+						labelText =	'← ' + propLabel;
+					} else {
+						labelText = propLabel;
+					}
+
+					Edges.add({
+						from: from,
+						to: to,
+						label: labelText,
+						group: from,
+						arrows: { to: { enabled: true } },
+						color: { color: PropColors[propLabel] },
+					});
+				}
 			}
 
 			if (!(label in Categories)) {
 				Categories[label] = [];
 			}
-
-			for (var i in data[label].categories) {
-				var category = data[label].categories[i];
-				if (Categories[label].indexOf(category) === -1) {
-					Categories[label].push(category);
-				}
-			}
-
-			// i is property Article title
-			for (var i in data[label].properties) {
-				// if (
-				// 	propLabel in ModelProperties &&
-				// 	ModelProperties[propLabel].getValue() === false
-				// ) {
-				// 	continue;
-				// }
-				var property = data[label].properties[i];
-
-				if (!(property.canonicalLabel in PropColors)) {
-					var color_;
-					function colorExists() {
-						for (var j in PropColors) {
-							if (PropColors[j] === color_) {
-								return true;
-							}
-						}
-						return false;
+			if ('categories' in data[label]) {
+				for (var i in data[label].categories) {
+					var category = data[label].categories[i];
+					if (Categories[label].indexOf(category) === -1) {
+						Categories[label].push(category);
 					}
-					do {
-						color_ = KnowledgeGraphFunctions.randomHSL();
-					} while (colorExists());
-
-					PropColors[property.canonicalLabel] = color_;
-				}
-
-				var options =
-					property.preferredLabel in Config.propertyOptions
-						? Config.propertyOptions[property.preferredLabel]
-						: property.canonicalLabel in Config.propertyOptions
-							? Config.propertyOptions[property.canonicalLabel]
-							: {};
-
-				if ('nodes' in options) {
-					options = options.nodes;
-				}
-
-				if (!('color' in options)) {
-					options.color = PropColors[property.canonicalLabel];
-				}
-
-				var legendLabel =
-					property.preferredLabel !== ''
-						? property.preferredLabel
-						: property.canonicalLabel;
-
-				if (!(legendLabel in PropIdPropLabelMap)) {
-					PropIdPropLabelMap[legendLabel] = [];
-				}
-
-				var propLabel =
-					legendLabel +
-					(!Config['show-property-type']
-						? ''
-						: ' (' + property.typeLabel + ')');
-
-				if (Config['properties-panel']) {
-					addLegendEntry(
-						property.canonicalLabel,
-						legendLabel,
-						PropColors[property.canonicalLabel]
-					);
-				}
-
-				switch (property.typeId) {
-					case '_wpg':
-						for (var ii in property.values) {
-							PropIdPropLabelMap[legendLabel].push(property.values[ii].value);
-
-							var edgeConfig = jQuery.extend(
-								JSON.parse(JSON.stringify(Config.graphOptions.edges)),
-								{
-									from: label,
-									to: property.values[ii].value,
-									label: propLabel,
-									group: label,
-								}
-							);
-
-							edgeConfig.arrows.to.enabled = true;
-							Edges.add(edgeConfig);
-							if (
-								property.values[ii].src &&
-								mw.config.get('KnowledgeGraphShowImages') === true
-							) {
-								options.shape = 'image';
-								options.image = property.values[ii].src;
-							}
-
-							addArticleNode(data, property.values[ii].value, options);
-						}
-
-						break;
-					// @TODO complete with other property types
-					default:
-						var valueId = `${i}#${KnowledgeGraphFunctions.uuidv4()}`;
-
-						PropIdPropLabelMap[legendLabel].push(valueId);
-
-						Edges.add({
-							from: label,
-							to: valueId,
-							label: propLabel,
-							group: label,
-						});
-
-						var propValue = property.values.map((x) => x.value).join(', ');
-
-						Nodes.add(
-							jQuery.extend(options, {
-								id: valueId,
-								label:
-									propValue.length <= maxPropValueLength
-										? propValue
-										: propValue.substring(0, maxPropValueLength) + '…',
-							})
-						);
 				}
 			}
+
 		}
 
 		Data = jQuery.extend(Data, data);
 	}
+
 
 	function HideNodesRec(nodeId) {
 		var children = Network.getConnectedNodes(nodeId);
