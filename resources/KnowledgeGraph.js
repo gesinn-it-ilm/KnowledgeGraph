@@ -260,11 +260,11 @@ KnowledgeGraph = function () {
 				continue;
 			}
 
-			addArticleNode(data, label);
-
 			if (data[label] === null) {
 				continue;
 			}
+
+			addArticleNode(data, label);
 
 			if ('edges' in data[label]) {
 				for (const edge of data[label].edges) {
