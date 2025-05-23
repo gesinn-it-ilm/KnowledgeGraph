@@ -297,6 +297,7 @@ nodes=TestPage
 	 * @param string $propertyText
 	 * @param int $limit
 	 * @param int $offset
+	 * @param string|null $targetValue
 	 * @return array
 	 */
 	public static function getSubjectsByProperty( $propertyText, $limit = 100, $offset = 0, $targetValue = null ) {
@@ -347,7 +348,7 @@ nodes=TestPage
 		}
 		return $ret;
 	}
-	
+
 	/**
 	 * @param Title|MediaWiki\Title\Title $title $title
 	 * @return string|null
@@ -515,6 +516,7 @@ nodes=TestPage
 	 * @param array $onlyProperties
 	 * @param int $depth
 	 * @param int $maxDepth
+	 * @param array &$visited
 	 * @return array
 	 */
 	public static function setSemanticData( Title $title, $onlyProperties, $depth, $maxDepth, array &$visited = [] ) {
@@ -642,6 +644,7 @@ nodes=TestPage
 				}
 			}
 
+			// check inverse properties
 			if ( count( $onlyProperties ) ) {
 				$inverseProps = array_filter( $onlyProperties, static function ( $property ) {
 					return strpos( $property, '-' ) === 0;
@@ -678,7 +681,13 @@ nodes=TestPage
 
 							if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
 								if ( $depth < $maxDepth ) {
-									self::setSemanticData( $sourceTitle, $onlyProperties, $depth + 1, $maxDepth, $visited );
+									self::setSemanticData(
+										$sourceTitle,
+										$onlyProperties,
+										$depth + 1,
+										$maxDepth,
+										$visited
+									);
 								} else {
 									self::$data[$sourceTitle->getFullText()] = null;
 								}
@@ -689,6 +698,7 @@ nodes=TestPage
 			}
 		}
 
+		// check inverse properties
 		if ( count( $onlyProperties ) ) {
 			$inverseProps = array_filter( $onlyProperties, static function ( $property ) {
 				return strpos( $property, '-' ) === 0;
@@ -745,6 +755,15 @@ nodes=TestPage
 		self::$data[$fullTitleText] = $output;
 	}
 
+	/**
+	 * Adds an edge (relation) between two nodes, avoiding duplicates.
+	 * If the edge already exists, it updates the direction if necessary.
+	 *
+	 * @param string $source The source node.
+	 * @param string $target The target node.
+	 * @param string $property The property (relation) name.
+	 * @param string $direction Either 'direct' or 'inverse'.
+	 */
 	private static function addEdge( $source, $target, $property, $direction ) {
 		foreach ( self::$edges as &$edge ) {
 			if (
