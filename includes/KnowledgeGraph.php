@@ -50,13 +50,6 @@ class KnowledgeGraph {
 	 */
 	public static $data = [];
 
-	/**
-	 * An array to hold edges for the knowledge graph.
-	 *
-	 * @var array
-	 */
-	public static $edges = [];
-
 	public static function initSMW() {
 		if ( !defined( 'SMW_VERSION' ) ) {
 			return;
@@ -538,6 +531,14 @@ nodes=TestPage
 			$text_ = $iterator->current()->getText();
 			$categories[] = $text_;
 			$iterator->next();
+
+			// if ( !array_key_exists( $text_, self::$categories ) ) {
+			// 	self::$categories[$text_] = [];
+			// }
+
+			// if ( !in_array( $title->getFullText(), self::$categories[$text_] ) ) {
+			// 	self::$categories[$text_][] = $title->getFullText();
+			// }
 		}
 
 		$output = [
@@ -552,7 +553,9 @@ nodes=TestPage
 			}
 		}
 
-		self::$data[$fullTitleText] = [];
+		// ***important, this prevents infinite recursion
+		// no properties
+		self::$data[$title->getFullText()] = [];
 
 		$subject = new \SMW\DIWikiPage( $title->getDbKey(), $title->getNamespace() );
 		$semanticData = self::$SMWStore->getSemanticData( $subject );
@@ -595,31 +598,35 @@ nodes=TestPage
 			$objKey = $propertyTitle->getFullText();
 
 			$output['properties'][$objKey] = [
+				// 'url' => $propertyTitle->getFullURL(),
 				'key' => $key,
 				'typeId' => $typeID,
 				'canonicalLabel' => $canonicalLabel,
 				'preferredLabel' => $preferredLabel,
 				'typeLabel' => $typeLabel,
 				'description' => $description,
+				'isInverse' => false,
 				'values' => [],
 			];
 
 			foreach ( $semanticData->getPropertyValues( $property ) as $dataItem ) {
 				$dataValue = self::$SMWDataValueFactory->newDataValueByItem( $dataItem, $property );
 				if ( $dataValue->isValid() ) {
+					// *** are they necessary ?
 					$dataValue->setOption( 'no.text.transformation', true );
 					$dataValue->setOption( 'form/short', true );
 
 					$obj_ = [];
-
+					$title_ = null;
 					if ( $typeID === '_wpg' ) {
 						$title_ = $dataItem->getTitle();
 						if ( $title_ && $title_->isKnown() ) {
 							if ( !isset( self::$data[$title_->getFullText()] ) ) {
 								if ( $depth < $maxDepth ) {
-									self::addEdge( $fullTitleText, $title_->getFullText(), $canonicalLabel, 'direct' );
+									$obj_['direction'] = 'direct';
 									self::setSemanticData( $title_, $onlyProperties, $depth + 1, $maxDepth, $visited );
 								} else {
+									// not loaded
 									self::$data[$title_->getFullText()] = null;
 								}
 							}
@@ -633,136 +640,99 @@ nodes=TestPage
 								}
 							}
 						} elseif ( !isset( self::$data[str_replace( '_', ' ', $dataValue->getWikiValue() )] ) ) {
-							self::addEdge( $fullTitleText, $title_->getFullText(), $canonicalLabel, 'direct' );
+							$obj_['direction'] = 'direct';
 							$obj_['value'] = str_replace( '_', ' ', $dataValue->getWikiValue() );
 						}
 					} else {
+						$obj_['direction'] = 'direct';
 						$obj_['value'] = $dataValue->getWikiValue();
 					}
 
+					// TODO add for other types
+					if ( $typeID === '_wpg' ) {
+						// check inverse properties
+						if ( count( $onlyProperties ) ) {
+								$inverseProps = array_filter( $onlyProperties, static function ( $property ) {
+									return strpos( $property, '-' ) === 0;
+					 		} );
+
+							foreach ( $inverseProps as $inversePropertyLabel ) {
+								$cleanLabel = ltrim( $inversePropertyLabel, '-' );
+								$propertyDI = \SMW\DIProperty::newFromUserLabel( $cleanLabel );
+
+								$results = self::getSubjectsByProperty(
+									$propertyDI,
+									$limit,
+									0,
+									$fullTitleText
+								);
+
+					 			$nodes = [];
+								foreach ( $results as $subjectDI ) {
+					 				$sourceTitle = Title::newFromText(
+										$subjectDI->getDBkey(),
+										$subjectDI->getNamespace()
+									);
+					 				if ( !in_array( $sourceTitle->getFullText(), $nodes, true ) ) {
+					 					$nodes[] = $sourceTitle->getFullText();
+					 				}
+					 			}
+
+					 			foreach ( $results as $subjectDI ) {
+									$sourceTitle = Title::newFromText(
+										$subjectDI->getDBkey(),
+										$subjectDI->getNamespace()
+									);
+									if ( $sourceTitle ) {
+
+				 					if ( in_array( $sourceTitle->getFullText(), $visited ) ) {
+					 						continue;
+					 					}
+
+										$propTextStrReplace = str_replace( '_', ' ', $property->getKey() );
+										$propText = str_replace( '_', ' ', $propTextStrReplace );
+					 					if ( $cleanLabel !== $propText ) {
+					 						$obj_inv['direction'] = 'inverse';
+					 						$obj_inv['value'] = $sourceTitle->getFullText();
+					 						$inverseKey = "Attribut:" . $cleanLabel;
+					 						$output['properties'][$inverseKey]['values'][] = $obj_inv;
+					 						$output['properties'][$inverseKey]['canonicalLabel'] = $cleanLabel;
+					 						$output['properties'][$inverseKey]['preferredLabel'] = $preferredLabel;
+					 						$output['properties'][$inverseKey]['typeId'] = $typeID;
+					 						$output['properties'][$inverseKey]['isInverse'] = true;
+					 					} else {
+					 						$obj_inv['direction'] = 'inverse';
+					 						$obj_inv['value'] = $sourceTitle->getFullText();
+					 						$inverseKey = "Attribut:" . $cleanLabel;
+					 						$output['properties'][$inverseKey]['values'][] = $obj_inv;
+					 						$output['properties'][$inverseKey]['canonicalLabel'] = $cleanLabel;
+					 						$output['properties'][$inverseKey]['preferredLabel'] = $preferredLabel;
+					 						$output['properties'][$inverseKey]['typeId'] = $typeID;
+					 						$output['properties'][$inverseKey]['isInverse'] = true;
+					 					}
+
+										if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
+											if ( $depth < $maxDepth ) {
+												self::setSemanticData(
+													$sourceTitle,
+													$onlyProperties,
+													$depth + 1,
+													$maxDepth,
+													$visited
+												);
+											} else {
+												self::$data[$sourceTitle->getFullText()] = null;
+											}
+										}
+					 				}
+					 			}
+					 		}
+					 	}
+					}
 					$output['properties'][$objKey]['values'][] = $obj_;
 				}
 			}
-
-			// check inverse properties
-			if ( count( $onlyProperties ) ) {
-				self::processInverseProperties( $title, $onlyProperties, $depth, $maxDepth, $visited );
-			}
 		}
-
-		if ( count( $onlyProperties ) ) {
-			self::processInverseProperties( $title, $onlyProperties, $depth, $maxDepth, $visited );
-		}
-
-		$output['edges'] = array_values( array_filter(
-			self::$edges,
-			static function ( $edge ) use ( $fullTitleText ) {
-				return $edge['source'] === $fullTitleText || $edge['target'] === $fullTitleText;
-			}
-		) );
-
-		self::$data[$fullTitleText] = $output;
-	}
-
-	/**
-	 * Processes inverse semantic properties for a given title.
-	 *
-	 * This method identifies all properties in the $onlyProperties array that are marked
-	 * as inverse (i.e., prefixed with a '-') and retrieves subjects that reference the given
-	 * title through those inverse properties.
-	 *
-	 * @param Title $title The page title to process.
-	 * @param array $onlyProperties An array of property labels to consider, including inverse ones prefixed with '-'.
-	 * @param int $depth Current recursion depth.
-	 * @param int $maxDepth Maximum allowed recursion depth.
-	 * @param array &$visited A list of titles already visited, to prevent infinite loops.
-	 */
-	private static function processInverseProperties(
-		Title $title,
-		array $onlyProperties,
-		int $depth,
-		int $maxDepth,
-		array &$visited
-	): void {
-		$fullTitleText = $title->getFullText();
-
-		$inverseProps = array_filter( $onlyProperties, static function ( $property ) {
-			return strpos( $property, '-' ) === 0;
-		} );
-
-		foreach ( $inverseProps as $inversePropertyLabel ) {
-			$cleanLabel = ltrim( $inversePropertyLabel, '-' );
-			$propertyDI = \SMW\DIProperty::newFromUserLabel( $cleanLabel );
-
-			$results = self::getSubjectsByProperty(
-				$propertyDI,
-				$limit,
-				0,
-				$fullTitleText
-			);
-
-			$nodes = [];
-			foreach ( $results as $subjectDI ) {
-				$sourceTitle = Title::newFromText( $subjectDI->getDBkey(), $subjectDI->getNamespace() );
-				if ( $sourceTitle && !in_array( $sourceTitle->getFullText(), $nodes, true ) ) {
-					$nodes[] = $sourceTitle->getFullText();
-				}
-			}
-
-			foreach ( $results as $subjectDI ) {
-				$sourceTitle = Title::newFromText( $subjectDI->getDBkey(), $subjectDI->getNamespace() );
-				if ( $sourceTitle ) {
-					if ( in_array( $sourceTitle->getFullText(), $visited, true ) ) {
-						continue;
-					}
-
-					self::addEdge( $sourceTitle->getFullText(), $fullTitleText, $cleanLabel, 'inverse' );
-
-					if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
-						if ( $depth < $maxDepth ) {
-							self::setSemanticData(
-								$sourceTitle,
-								$onlyProperties,
-								$depth + 1,
-								$maxDepth,
-								$visited
-							);
-						} else {
-							self::$data[$sourceTitle->getFullText()] = null;
-						}
-					}
-				}
-			}
-		}
-	}
-
-	/**
-	 * Adds an edge (relation) between two nodes, avoiding duplicates.
-	 * If the edge already exists, it updates the direction if necessary.
-	 *
-	 * @param string $source The source node.
-	 * @param string $target The target node.
-	 * @param string $property The property (relation) name.
-	 * @param string $direction Either 'direct' or 'inverse'.
-	 */
-	private static function addEdge( $source, $target, $property, $direction ) {
-		foreach ( self::$edges as &$edge ) {
-			if (
-				$edge['source'] === $source &&
-				$edge['target'] === $target &&
-				$edge['property'] === $property
-			) {
-				if ( $direction === 'direct' && $edge['direction'] === 'inverse' ) {
-					$edge['direction'] = 'direct';
-				}
-				return;
-			}
-		}
-		self::$edges[] = [
-			'source' => $source,
-			'target' => $target,
-			'property' => $property,
-			'direction' => $direction,
-		];
+		self::$data[$title->getFullText()] = $output;
 	}
 }

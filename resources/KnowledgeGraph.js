@@ -231,8 +231,9 @@ KnowledgeGraph = function () {
 		);
 
 		if (!(label in data)) {
+			nodeConfig.color.border = 'red';
 			nodeConfig.font.color = 'red';
-			nodeConfig.color = options.color;
+			nodeConfig.color.background = 'white';
 		}
 
 		if (data[label] === null) {
@@ -253,95 +254,147 @@ KnowledgeGraph = function () {
 	}
 
 	function createNodes(data) {
-		const addedEdges = new Set();
-		var options = []; 
 		for (var label in data) {
-			if (label in Data && Data[label] !== null) {
-				continue;
-			}
-
-			if (data[label] === null) {
-				continue;
-			}
+			if (label in Data && Data[label] !== null) continue;
 
 			addArticleNode(data, label);
+			if (data[label] === null) continue;
 
-			if ('edges' in data[label]) {
-				for (const edge of data[label].edges) {
-					const from = edge.source;
-					const to = edge.target;
-					const propLabel = edge.property;
-					const direction = edge.direction;
+			if (!(label in Categories)) Categories[label] = [];
 
-					const edgeKey = `${from}->${to}::${propLabel}::${edge.direction}`;
-					if (addedEdges.has(edgeKey)) {
-						continue;
+			for (var i in data[label].categories) {
+				var category = data[label].categories[i];
+				if (Categories[label].indexOf(category) === -1) {
+					Categories[label].push(category);
+				}
+			}
+
+			for (var i in data[label].properties) {
+				var property = data[label].properties[i];
+
+				if (!(property.canonicalLabel in PropColors)) {
+					let color_;
+					function colorExists() {
+						for (var j in PropColors) {
+							if (PropColors[j] === color_) return true;
+						}
+						return false;
 					}
-					addedEdges.add(edgeKey);
+					do {
+						color_ = KnowledgeGraphFunctions.randomHSL();
+					} while (colorExists());
+					PropColors[property.canonicalLabel] = color_;
+				}
 
-					if (!(propLabel in PropColors)) {
-						let color_;
-						do {
-							color_ = KnowledgeGraphFunctions.randomHSL();
-						} while (Object.values(PropColors).includes(color_));
-						PropColors[propLabel] = color_;
-					}
-					
-					if (!('color' in options)) {
-						options.color = PropColors[propLabel];
-					}
+				let options =
+					property.preferredLabel in Config.propertyOptions
+						? Config.propertyOptions[property.preferredLabel]
+						: property.canonicalLabel in Config.propertyOptions
+							? Config.propertyOptions[property.canonicalLabel]
+							: {};
 
-					if (!Nodes.get(from)) {
-						addArticleNode(data, from, options);
-					}
-					if (!Nodes.get(to)) {
-						addArticleNode(data, to, options);
-					}
+				if ('nodes' in options) {
+					options = options.nodes;
+				}
+				if (!('color' in options)) {
+					options.color = PropColors[property.canonicalLabel];
+				}
 
-					options = []
+				let legendLabel = property.preferredLabel !== '' ? property.preferredLabel : property.canonicalLabel;
+				if (!(legendLabel in PropIdPropLabelMap)) {
+					PropIdPropLabelMap[legendLabel] = [];
+				}
+				let propLabel = legendLabel + (!Config['show-property-type'] ? '' : ' (' + property.typeLabel + ')');
 
-					if (Config['properties-panel']) {
-						addLegendEntry(
-							propLabel,
-							propLabel,
-							PropColors[propLabel]
+				if (Config['properties-panel']) {
+					addLegendEntry(property.canonicalLabel, legendLabel, PropColors[property.canonicalLabel]);
+				}
+
+				let seenValues = new Set();
+
+				switch (property.typeId) {
+					case '_wpg':
+						for (let value of property.values) {
+							if (seenValues.has(value.value)) continue;
+							seenValues.add(value.value);
+
+							PropIdPropLabelMap[legendLabel].push(value.value);
+
+							let edgeConfig = jQuery.extend(
+								JSON.parse(JSON.stringify(Config.graphOptions.edges)),
+								value.direction === 'inverse'
+									? {
+											from: value.value,
+											to: label,
+											label: '-' + propLabel,
+											group: label,
+									}
+									: {
+											from: label,
+											to: value.value,
+											label: propLabel,
+											group: label,
+									}
+							);
+
+							let exists = false;
+							Edges.forEach((edge) => {
+								const labelsMatch = edge.label === edgeConfig.label || edge.label === '-' + edgeConfig.label || '-' + edge.label === edgeConfig.label;
+								const sameDirection = edge.from === edgeConfig.from && edge.to === edgeConfig.to;
+								const oppositeDirection = edge.from === edgeConfig.to && edge.to === edgeConfig.from;
+
+								if (labelsMatch && (sameDirection || oppositeDirection)) {
+									exists = true;
+								}
+							});
+
+							edgeConfig.arrows.to.enabled = true;
+
+							if (!exists) {
+								Edges.add(edgeConfig);
+							}
+
+							if (value.src && mw.config.get('KnowledgeGraphShowImages') === true) {
+								options.shape = 'image';
+								options.image = value.src;
+							}
+
+							addArticleNode(data, value.value, options);
+						}
+						break;
+
+					default:
+						let filteredValues = property.values.filter(v => 'direction' in v && !seenValues.has(v.value));
+						if (filteredValues.length === 0) break;
+
+						for (let val of filteredValues) seenValues.add(val.value);
+
+						let valueId = `${i}#${KnowledgeGraphFunctions.uuidv4()}`;
+						PropIdPropLabelMap[legendLabel].push(valueId);
+
+						Edges.add({
+							from: label,
+							to: valueId,
+							label: propLabel,
+							group: label,
+						});
+
+						let propValue = filteredValues.map((x) => x.value).join(', ');
+
+						Nodes.add(
+							jQuery.extend(options, {
+								id: valueId,
+								label: propValue.length <= maxPropValueLength
+									? propValue
+									: propValue.substring(0, maxPropValueLength) + '…',
+							})
 						);
-					}
-
-					if (direction === 'inverse') {
-						labelText =	'-' + propLabel;
-					} else {
-						labelText = propLabel;
-					}
-
-					Edges.add({
-						from: from,
-						to: to,
-						label: labelText,
-						group: from,
-						arrows: { to: { enabled: true } },
-						color: { color: PropColors[propLabel] },
-					});
 				}
 			}
-
-			if (!(label in Categories)) {
-				Categories[label] = [];
-			}
-			if ('categories' in data[label]) {
-				for (var i in data[label].categories) {
-					var category = data[label].categories[i];
-					if (Categories[label].indexOf(category) === -1) {
-						Categories[label].push(category);
-					}
-				}
-			}
-
 		}
 
 		Data = jQuery.extend(Data, data);
 	}
-
 
 	function HideNodesRec(nodeId) {
 		var children = Network.getConnectedNodes(nodeId);
