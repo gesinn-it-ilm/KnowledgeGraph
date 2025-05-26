@@ -559,6 +559,7 @@ nodes=TestPage
 
 		$subject = new \SMW\DIWikiPage( $title->getDbKey(), $title->getNamespace() );
 		$semanticData = self::$SMWStore->getSemanticData( $subject );
+		$preferredLabel = '';
 
 		foreach ( $semanticData->getProperties() as $property ) {
 			$key = $property->getKey();
@@ -574,15 +575,15 @@ nodes=TestPage
 			$canonicalLabel = $property->getCanonicalLabel();
 			$preferredLabel = $property->getPreferredLabel();
 
+			$description = $propertyRegistry->findPropertyDescriptionMsgKeyById( $key );
+			$typeID = $property->findPropertyTypeID();
+
 			if ( count( $onlyProperties )
 				&& !in_array( $canonicalLabel, $onlyProperties )
 				&& !in_array( $preferredLabel, $onlyProperties )
 			) {
 				continue;
 			}
-
-			$description = $propertyRegistry->findPropertyDescriptionMsgKeyById( $key );
-			$typeID = $property->findPropertyTypeID();
 
 			if ( $description ) {
 				$description = wfMessage( $description )->text();
@@ -648,91 +649,222 @@ nodes=TestPage
 						$obj_['value'] = $dataValue->getWikiValue();
 					}
 
-					// TODO add for other types
-					if ( $typeID === '_wpg' ) {
-						// check inverse properties
-						if ( count( $onlyProperties ) ) {
-								$inverseProps = array_filter( $onlyProperties, static function ( $property ) {
-									return strpos( $property, '-' ) === 0;
-					 		} );
+					self::processInverseProperties(
+						$typeID,
+						$onlyProperties,
+						$fullTitleText,
+						$preferredLabel,
+						$depth,
+						$maxDepth,
+						$visited,
+						$output
+					);
 
-							foreach ( $inverseProps as $inversePropertyLabel ) {
-								$cleanLabel = ltrim( $inversePropertyLabel, '-' );
-								$propertyDI = \SMW\DIProperty::newFromUserLabel( $cleanLabel );
-
-								$results = self::getSubjectsByProperty(
-									$propertyDI,
-									$limit,
-									0,
-									$fullTitleText
-								);
-
-					 			$nodes = [];
-								foreach ( $results as $subjectDI ) {
-					 				$sourceTitle = Title::newFromText(
-										$subjectDI->getDBkey(),
-										$subjectDI->getNamespace()
-									);
-					 				if ( !in_array( $sourceTitle->getFullText(), $nodes, true ) ) {
-					 					$nodes[] = $sourceTitle->getFullText();
-					 				}
-					 			}
-
-					 			foreach ( $results as $subjectDI ) {
-									$sourceTitle = Title::newFromText(
-										$subjectDI->getDBkey(),
-										$subjectDI->getNamespace()
-									);
-									if ( $sourceTitle ) {
-
-				 					if ( in_array( $sourceTitle->getFullText(), $visited ) ) {
-					 						continue;
-					 					}
-
-										$propTextStrReplace = str_replace( '_', ' ', $property->getKey() );
-										$propText = str_replace( '_', ' ', $propTextStrReplace );
-					 					if ( $cleanLabel !== $propText ) {
-					 						$obj_inv['direction'] = 'inverse';
-					 						$obj_inv['value'] = $sourceTitle->getFullText();
-					 						$inverseKey = "Attribut:" . $cleanLabel;
-					 						$output['properties'][$inverseKey]['values'][] = $obj_inv;
-					 						$output['properties'][$inverseKey]['canonicalLabel'] = $cleanLabel;
-					 						$output['properties'][$inverseKey]['preferredLabel'] = $preferredLabel;
-					 						$output['properties'][$inverseKey]['typeId'] = $typeID;
-					 						$output['properties'][$inverseKey]['isInverse'] = true;
-					 					} else {
-					 						$obj_inv['direction'] = 'inverse';
-					 						$obj_inv['value'] = $sourceTitle->getFullText();
-					 						$inverseKey = "Attribut:" . $cleanLabel;
-					 						$output['properties'][$inverseKey]['values'][] = $obj_inv;
-					 						$output['properties'][$inverseKey]['canonicalLabel'] = $cleanLabel;
-					 						$output['properties'][$inverseKey]['preferredLabel'] = $preferredLabel;
-					 						$output['properties'][$inverseKey]['typeId'] = $typeID;
-					 						$output['properties'][$inverseKey]['isInverse'] = true;
-					 					}
-
-										if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
-											if ( $depth < $maxDepth ) {
-												self::setSemanticData(
-													$sourceTitle,
-													$onlyProperties,
-													$depth + 1,
-													$maxDepth,
-													$visited
-												);
-											} else {
-												self::$data[$sourceTitle->getFullText()] = null;
-											}
-										}
-					 				}
-					 			}
-					 		}
-					 	}
-					}
 					$output['properties'][$objKey]['values'][] = $obj_;
 				}
 			}
 		}
+
+		self::processInverseProperties(
+			$typeID,
+			$onlyProperties,
+			$fullTitleText,
+			$preferredLabel,
+			$depth,
+			$maxDepth,
+			$visited,
+			$output
+		);
+
 		self::$data[$title->getFullText()] = $output;
 	}
+
+	/**
+	 * Processes inverse semantic properties for entities of type `_wpg`.
+	 *
+	 * This method identifies and processes all properties from the `$onlyProperties` list that are marked as
+	 * inverse (i.e., start with a `-` prefix). For each such property, it retrieves all subjects that reference
+	 * the current entity (`$fullTitleText`) using that property.
+	 *
+	 * The results are added to the `$output` array, marking them as inverse relationships. If the depth limit
+	 * (`$maxDepth`) has not been reached, the method recursively processes each related subject to build a
+	 * deeper semantic graph.
+	 *
+	 * @param string|null $typeID The type ID of the entity; must be `_wpg` or null to proceed.
+	 * @param array $onlyProperties A list of property labels to filter by; inverse properties start with `-`.
+	 * @param string $fullTitleText The full title text of the current page, used to match incoming references.
+	 * @param string $preferredLabel The display label to associate with the found inverse properties.
+	 * @param int $depth The current recursion depth.
+	 * @param int $maxDepth The maximum allowed recursion depth.
+	 * @param array &$visited A list of already visited page titles to prevent infinite loops.
+	 * @param array &$output The data structure where inverse property results will be added.
+	 */
+	private static function processInverseProperties(
+		?string $typeID,
+		array $onlyProperties,
+		string $fullTitleText,
+		string $preferredLabel,
+		int $depth,
+		int $maxDepth,
+		array &$visited,
+		array &$output
+	): void {
+		if ( ( $typeID !== '_wpg' && $typeID !== null ) || count( $onlyProperties ) === 0 ) {
+
+			if ( $typeID === '_txt' ) {
+				array_filter( $onlyProperties, static function ( $property ) {
+				return strpos( $property, '-' ) === 0;
+			} );
+
+				foreach ( $inverseProps as $inversePropertyLabel ) {
+					$cleanLabel = ltrim( $inversePropertyLabel, '-' );
+					$propertyDI = \SMW\DIProperty::newFromUserLabel( $cleanLabel );
+
+					$results = self::getSubjectsByProperty(
+						$propertyDI,
+						$limit,
+						0,
+						$fullTitleText
+					);
+
+					$nodes = [];
+					foreach ( $results as $subjectDI ) {
+						$sourceTitle = Title::newFromText(
+							$subjectDI->getDBkey(),
+							$subjectDI->getNamespace()
+						);
+						if ( !in_array( $sourceTitle->getFullText(), $nodes, true ) ) {
+							$nodes[] = $sourceTitle->getFullText();
+						}
+					}
+
+					foreach ( $results as $subjectDI ) {
+						$sourceTitle = Title::newFromText(
+							$subjectDI->getDBkey(),
+							$subjectDI->getNamespace()
+						);
+
+						if ( $sourceTitle && !in_array( $sourceTitle->getFullText(), $visited, true ) ) {
+							self::addInversePropertyToOutput(
+								$cleanLabel,
+								$sourceTitle,
+								$preferredLabel,
+								"_wpg",
+								$output
+							);
+
+							if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
+								if ( $depth < $maxDepth ) {
+									self::setSemanticData(
+										$sourceTitle,
+										$onlyProperties,
+										$depth + 1,
+										$maxDepth,
+										$visited
+									);
+								} else {
+									self::$data[$sourceTitle->getFullText()] = null;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		$typeID = '_wpg';
+
+		$inverseProps = array_filter( $onlyProperties, static function ( $property ) {
+			return strpos( $property, '-' ) === 0;
+		} );
+
+		foreach ( $inverseProps as $inversePropertyLabel ) {
+			$cleanLabel = ltrim( $inversePropertyLabel, '-' );
+			$propertyDI = \SMW\DIProperty::newFromUserLabel( $cleanLabel );
+
+			$results = self::getSubjectsByProperty(
+				$propertyDI,
+				$limit,
+				0,
+				$fullTitleText
+			);
+
+			$nodes = [];
+			foreach ( $results as $subjectDI ) {
+				$sourceTitle = Title::newFromText(
+					$subjectDI->getDBkey(),
+					$subjectDI->getNamespace()
+				);
+				if ( !in_array( $sourceTitle->getFullText(), $nodes, true ) ) {
+					$nodes[] = $sourceTitle->getFullText();
+				}
+			}
+
+			foreach ( $results as $subjectDI ) {
+				$sourceTitle = Title::newFromText(
+					$subjectDI->getDBkey(),
+					$subjectDI->getNamespace()
+				);
+
+				if ( $sourceTitle && !in_array( $sourceTitle->getFullText(), $visited, true ) ) {
+					self::addInversePropertyToOutput(
+						$cleanLabel,
+						$sourceTitle,
+						$preferredLabel,
+						$typeID,
+						$output
+					);
+
+					if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
+						if ( $depth < $maxDepth ) {
+							self::setSemanticData(
+								$sourceTitle,
+								$onlyProperties,
+								$depth + 1,
+								$maxDepth,
+								$visited
+							);
+						} else {
+							self::$data[$sourceTitle->getFullText()] = null;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Adds an inverse property entry to the output array.
+	 *
+	 * This method populates the `$output['properties']` structure with details about an inverse property
+	 * relationship, including the source page that references the current entity. The property is marked
+	 * as inverse and is associated with labels and type information.
+	 *
+	 * @param string $cleanLabel The user-defined label of the property, with the '-' prefix removed.
+	 * @param Title $sourceTitle The MediaWiki title object of the page that links to the current entity.
+	 * @param string $preferredLabel The label to use for display purposes.
+	 * @param string $typeID The type ID of the property, usually `_wpg`.
+	 * @param array &$output The data structure where the inverse property information is stored.
+	 */
+	private static function addInversePropertyToOutput(
+		string $cleanLabel,
+		Title $sourceTitle,
+		string $preferredLabel,
+		string $typeID,
+		array &$output
+	): void {
+		$inverseKey = "Attribut:" . $cleanLabel;
+
+		$obj_inv = [
+			'direction' => 'inverse',
+			'value' => $sourceTitle->getFullText(),
+		];
+
+		$output['properties'][$inverseKey]['values'][] = $obj_inv;
+		$output['properties'][$inverseKey]['canonicalLabel'] = $cleanLabel;
+		$output['properties'][$inverseKey]['preferredLabel'] = $preferredLabel;
+		$output['properties'][$inverseKey]['typeId'] = $typeID;
+		$output['properties'][$inverseKey]['isInverse'] = true;
+	}
+
 }
