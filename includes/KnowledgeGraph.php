@@ -712,9 +712,9 @@ nodes=TestPage
 		if ( ( $typeID !== '_wpg' && $typeID !== null ) || count( $onlyProperties ) === 0 ) {
 
 			if ( $typeID === '_txt' ) {
-				array_filter( $onlyProperties, static function ( $property ) {
-				return strpos( $property, '-' ) === 0;
-			} );
+				$inverseProps = array_filter( $onlyProperties, static function ( $property ) {
+					return strpos( $property, '-' ) === 0;
+				} );
 
 				foreach ( $inverseProps as $inversePropertyLabel ) {
 					$cleanLabel = ltrim( $inversePropertyLabel, '-' );
@@ -807,6 +807,30 @@ nodes=TestPage
 				);
 
 				if ( $sourceTitle && !in_array( $sourceTitle->getFullText(), $visited, true ) ) {
+					self::addInversePropertyToOutput(
+						$cleanLabel,
+						$sourceTitle,
+						$preferredLabel,
+						$typeID,
+						$output
+					);
+
+					if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
+						if ( $depth < $maxDepth ) {
+							self::setSemanticData(
+								$sourceTitle,
+								$onlyProperties,
+								$depth + 1,
+								$maxDepth,
+								$visited
+							);
+						} else {
+							self::$data[$sourceTitle->getFullText()] = null;
+						}
+					}
+				}
+
+				if ( $sourceTitle ) {
 					self::addInversePropertyToOutput(
 						$cleanLabel,
 						$sourceTitle,
