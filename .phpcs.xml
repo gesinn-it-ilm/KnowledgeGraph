@@ -3,10 +3,6 @@
 	<rule ref="./vendor/mediawiki/mediawiki-codesniffer/MediaWiki">
 		<exclude name="MediaWiki.Usage.ExtendClassUsage.FunctionVarUsage" />
 		<exclude name="Generic.Files.OneObjectStructurePerFile.MultipleFound" />
-		<exclude name="Generic.WhiteSpace.ScopeIndent.IncorrectExact" />
-		<exclude name="Generic.WhiteSpace.DisallowSpaceIndent.SpacesUsed" />
-		<exclude name="Squiz.WhiteSpace.ScopeClosingBrace.Indent" />
-		<exclude name="Generic.WhiteSpace.ScopeIndent.Incorrect" />
 	</rule>
 	<file>.</file>
     <exclude-pattern>/(vendor|conf)/</exclude-pattern>
