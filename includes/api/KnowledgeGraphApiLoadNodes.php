@@ -44,7 +44,7 @@ class KnowledgeGraphApiLoadNodes extends ApiBase {
 			$title_ = TitleClass::newFromText( $titleText );
 			if ( $title_ && $title_->isKnown() ) {
 				if ( !isset( self::$data[$title_->getFullText()] ) ) {
-					\KnowledgeGraph::setSemanticData( $title_, $params['properties'], 0, $params['depth'] );
+					\KnowledgeGraph::setSemanticDataForDesigner( $title_, $params['properties'], 0, $params['depth'] );
 				}
 			}
 		}

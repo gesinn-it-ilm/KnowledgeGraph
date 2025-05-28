@@ -60,7 +60,7 @@ class KnowledgeGraphApiLoadCategories extends ApiBase {
 
 		foreach ( $titles as $titleText => $title_ ) {
 			if ( !isset( self::$data[$titleText] ) ) {
-				\KnowledgeGraph::setSemanticData( $title_, $params['properties'], 0, $params['depth'] );
+				\KnowledgeGraph::setSemanticDataForDesigner( $title_, $params['properties'], 0, $params['depth'] );
 			}
 		}
 

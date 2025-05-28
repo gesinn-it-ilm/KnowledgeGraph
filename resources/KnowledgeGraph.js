@@ -320,22 +320,47 @@ KnowledgeGraph = function () {
 
 							PropIdPropLabelMap[legendLabel].push(value.value);
 
-							let edgeConfig = jQuery.extend(
-								JSON.parse(JSON.stringify(Config.graphOptions.edges)),
-								value.direction === 'inverse'
-									? {
-											from: value.value,
-											to: label,
-											label: '-' + propLabel,
-											group: label,
-									}
-									: {
-											from: label,
-											to: value.value,
-											label: propLabel,
-											group: label,
-									}
-							);
+							// separate logic for KnowledgeGraphDesigner and parserfunction
+							if (data[label]?.context === 'KnowledgeGraphDesigner') {
+								let isInverse = false;
+								if (Nodes.get(value.value)) {
+									isInverse = true;
+								}
+
+								edgeConfig = jQuery.extend(
+									JSON.parse(JSON.stringify(Config.graphOptions.edges)),
+									isInverse
+										? {
+												from: label,
+												to: value.value,
+												label: '-' + propLabel,
+												group: label,
+										}
+										: {
+												from: label,
+												to: value.value,
+												label: propLabel,
+												group: label,
+										}
+								);
+							} else {
+								edgeConfig = jQuery.extend(
+									JSON.parse(JSON.stringify(Config.graphOptions.edges)),
+									value.direction === 'inverse'
+										? {
+												from: value.value,
+												to: label,
+												label: '-' + propLabel,
+												group: label,
+										}
+										: {
+												from: label,
+												to: value.value,
+												label: propLabel,
+												group: label,
+										}
+								);
+							}
 
 							let exists = false;
 							Edges.forEach((edge) => {
@@ -364,7 +389,14 @@ KnowledgeGraph = function () {
 						break;
 
 					default:
-						let filteredValues = property.values.filter(v => 'direction' in v && !seenValues.has(v.value));
+						let filteredValues;
+						// separate logic for KnowledgeGraphDesigner and parserfunction
+						if (data[label]?.context === 'KnowledgeGraphDesigner') {
+							filteredValues = property.values.filter(v => !seenValues.has(v.value));
+						} else {
+							filteredValues = property.values.filter(v => 'direction' in v && !seenValues.has(v.value));
+						}
+
 						if (filteredValues.length === 0) break;
 
 						for (let val of filteredValues) seenValues.add(val.value);

@@ -240,7 +240,13 @@ nodes=TestPage
 			$title_ = TitleClass::newFromText( $titleText );
 			if ( $title_ && $title_->isKnown() ) {
 				if ( !isset( self::$data[$title_->getFullText()] ) ) {
-					self::setSemanticData( $title_, $params['properties'], 0, $params['depth'], $visited );
+					self::setSemanticDataForParserFunction(
+						$title_,
+						$params['properties'],
+						0,
+						$params['depth'],
+						$visited
+					);
 				}
 			}
 		}
@@ -504,6 +510,10 @@ nodes=TestPage
 	}
 
 	/**
+	 * Retrieves semantic data for the given page title, used within the Knowledge Graph Designer context.
+	 * Unlike the parser function version, this method includes additional metadata (such as 'context')
+	 * to support frontend logic specific to the visual graph designer.
+	 *
 	 * @see https://gerrit.wikimedia.org/r/plugins/gitiles/mediawiki/extensions/PageProperties/+/refs/heads/1.0.3/includes/PageProperties.php
 	 * @param Title|MediaWiki\Title\Title $title
 	 * @param array $onlyProperties
@@ -512,7 +522,161 @@ nodes=TestPage
 	 * @param array &$visited
 	 * @return array
 	 */
-	public static function setSemanticData( Title $title, $onlyProperties, $depth, $maxDepth, array &$visited = [] ) {
+	public static function setSemanticDataForDesigner(
+		Title $title,
+		$onlyProperties,
+		$depth,
+		$maxDepth,
+		array &$visited = []
+	) {
+		$services = MediaWikiServices::getInstance();
+		$langCode = \RequestContext::getMain()->getLanguage()->getCode();
+		$propertyRegistry = \SMW\PropertyRegistry::getInstance();
+		$dataTypeRegistry = \SMW\DataTypeRegistry::getInstance();
+
+		$wikiPage = self::getWikiPage( $title );
+		$fullTitleText = $title->getFullText();
+		if ( !in_array( $fullTitleText, $visited, true ) ) {
+			$visited[] = $fullTitleText;
+		}
+
+		$categories = [];
+		$iterator = $wikiPage->getCategories();
+
+		while ( $iterator->valid() ) {
+			$text_ = $iterator->current()->getText();
+			$categories[] = $text_;
+			$iterator->next();
+		}
+
+		$output = [
+			'properties' => [],
+			'categories' => $categories
+		];
+
+		if ( $title->getNamespace() === NS_FILE ) {
+			$img = $services->getRepoGroup()->findFile( $title );
+			if ( $img ) {
+				$output['src'] = $img->getFullUrl();
+			}
+		}
+
+		// ***important, this prevents infinite recursion
+		// no properties
+		self::$data[$title->getFullText()] = [];
+
+		$subject = new \SMW\DIWikiPage( $title->getDbKey(), $title->getNamespace() );
+		$semanticData = self::$SMWStore->getSemanticData( $subject );
+
+		foreach ( $semanticData->getProperties() as $property ) {
+			$key = $property->getKey();
+			if ( in_array( $key, self::$exclude ) ) {
+				continue;
+			}
+
+			$propertyDv = self::$SMWDataValueFactory->newDataValueByItem( $property, null );
+			if ( !$property->isUserAnnotable() || !$propertyDv->isVisible() ) {
+				continue;
+			}
+
+			$canonicalLabel = $property->getCanonicalLabel();
+			$preferredLabel = $property->getPreferredLabel();
+
+			if ( count( $onlyProperties )
+				&& !in_array( $canonicalLabel, $onlyProperties )
+				&& !in_array( $preferredLabel, $onlyProperties )
+			) {
+				continue;
+			}
+
+			$description = $propertyRegistry->findPropertyDescriptionMsgKeyById( $key );
+			$typeID = $property->findPropertyTypeID();
+
+			if ( $description ) {
+				$description = wfMessage( $description )->text();
+			}
+			$typeLabel = $dataTypeRegistry->findTypeLabel( $typeID );
+
+			if ( empty( $typeLabel ) ) {
+				$typeId_ = $dataTypeRegistry->getFieldType( $typeID );
+				$typeLabel = $dataTypeRegistry->findTypeLabel( $typeId_ );
+			}
+
+			$propertyTitle = $property->getCanonicalDiWikiPage()->getTitle();
+			$objKey = $propertyTitle->getFullText();
+
+			$output['properties'][$objKey] = [
+				// 'url' => $propertyTitle->getFullURL(),
+				'key' => $key,
+				'typeId' => $typeID,
+				'canonicalLabel' => $canonicalLabel,
+				'preferredLabel' => $preferredLabel,
+				'typeLabel' => $typeLabel,
+				'description' => $description,
+				'values' => []
+			];
+
+			foreach ( $semanticData->getPropertyValues( $property ) as $dataItem ) {
+				$dataValue = self::$SMWDataValueFactory->newDataValueByItem( $dataItem, $property );
+				if ( $dataValue->isValid() ) {
+					// *** are they necessary ?
+					$dataValue->setOption( 'no.text.transformation', true );
+					$dataValue->setOption( 'form/short', true );
+
+					$obj_ = [];
+					if ( $typeID === '_wpg' ) {
+						$title_ = $dataItem->getTitle();
+						if ( $title_ && $title_->isKnown() ) {
+							if ( !isset( self::$data[$title_->getFullText()] ) ) {
+								if ( $depth < $maxDepth ) {
+									self::setSemanticDataForDesigner( $title_, $onlyProperties, ++$depth, $maxDepth );
+								} else {
+									// not loaded
+									self::$data[$title_->getFullText()] = null;
+								}
+							}
+							$obj_['value'] = $title_->getFullText();
+
+							if ( $title_->getNamespace() === NS_FILE ) {
+								$img_ = $services->getRepoGroup()->findFile( $title_ );
+								if ( $img_ ) {
+									$obj_['src'] = $img_->getFullUrl();
+								}
+							}
+						} elseif ( !isset( self::$data[str_replace( '_', ' ', $dataValue->getWikiValue() )] ) ) {
+							$obj_['value'] = str_replace( '_', ' ', $dataValue->getWikiValue() );
+						}
+					} else {
+						$obj_['value'] = $dataValue->getWikiValue();
+					}
+
+					$output['properties'][$objKey]['values'][] = $obj_;
+				}
+			}
+		}
+		$output['context'] = 'KnowledgeGraphDesigner';
+		self::$data[$title->getFullText()] = $output;
+	}
+
+	/**
+	 * Retrieves semantic data for the given page title, used within a parser function context.
+	 * Supports recursive traversal of linked pages up to a defined depth.
+	 *
+	 * @see https://gerrit.wikimedia.org/r/plugins/gitiles/mediawiki/extensions/PageProperties/+/refs/heads/1.0.3/includes/PageProperties.php
+	 * @param Title|MediaWiki\Title\Title $title
+	 * @param array $onlyProperties
+	 * @param int $depth
+	 * @param int $maxDepth
+	 * @param array &$visited
+	 * @return array
+	 */
+	public static function setSemanticDataForParserFunction(
+		Title $title,
+		$onlyProperties,
+		$depth,
+		$maxDepth,
+		array &$visited = []
+	) {
 		$services = MediaWikiServices::getInstance();
 		$langCode = \RequestContext::getMain()->getLanguage()->getCode();
 		$propertyRegistry = \SMW\PropertyRegistry::getInstance();
@@ -625,7 +789,13 @@ nodes=TestPage
 							if ( !isset( self::$data[$title_->getFullText()] ) ) {
 								if ( $depth < $maxDepth ) {
 									$obj_['direction'] = 'direct';
-									self::setSemanticData( $title_, $onlyProperties, $depth + 1, $maxDepth, $visited );
+									self::setSemanticDataForParserFunction(
+										$title_,
+										$onlyProperties,
+										$depth + 1,
+										$maxDepth,
+										$visited
+									);
 								} else {
 									// not loaded
 									self::$data[$title_->getFullText()] = null;
@@ -755,7 +925,7 @@ nodes=TestPage
 
 							if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
 								if ( $depth < $maxDepth ) {
-									self::setSemanticData(
+									self::setSemanticDataForParserFunction(
 										$sourceTitle,
 										$onlyProperties,
 										$depth + 1,
@@ -817,7 +987,7 @@ nodes=TestPage
 
 					if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
 						if ( $depth < $maxDepth ) {
-							self::setSemanticData(
+							self::setSemanticDataForParserFunction(
 								$sourceTitle,
 								$onlyProperties,
 								$depth + 1,
@@ -841,7 +1011,7 @@ nodes=TestPage
 
 					if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
 						if ( $depth < $maxDepth ) {
-							self::setSemanticData(
+							self::setSemanticDataForParserFunction(
 								$sourceTitle,
 								$onlyProperties,
 								$depth + 1,
