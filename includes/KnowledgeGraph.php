@@ -629,7 +629,13 @@ nodes=TestPage
 						if ( $title_ && $title_->isKnown() ) {
 							if ( !isset( self::$data[$title_->getFullText()] ) ) {
 								if ( $depth < $maxDepth ) {
-									self::setSemanticDataForDesigner( $title_, $onlyProperties, ++$depth, $maxDepth );
+									self::setSemanticDataForDesigner(
+										$title_,
+										$onlyProperties,
+										++$depth,
+										$maxDepth,
+										$visited
+									);
 								} else {
 									// not loaded
 									self::$data[$title_->getFullText()] = null;
@@ -652,8 +658,48 @@ nodes=TestPage
 
 					$output['properties'][$objKey]['values'][] = $obj_;
 				}
+
+				$propertyDI = \SMW\DIProperty::newFromUserLabel( $canonicalLabel );
+				$results = self::getSubjectsByProperty(
+					$propertyDI,
+					$limit,
+					0,
+					$fullTitleText
+				);
+
+				foreach ( $results as $subjectDI ) {
+					$sourceTitle = Title::newFromText(
+						$subjectDI->getDBkey(),
+						$subjectDI->getNamespace()
+					);
+
+					if ( $sourceTitle && !in_array( $sourceTitle->getFullText(), $visited, true ) ) {
+						self::addInversePropertyToOutput(
+							$canonicalLabel,
+							$sourceTitle,
+							$preferredLabel,
+							"_wpg",
+							$output
+						);
+
+						if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
+							if ( $depth < $maxDepth ) {
+								self::setSemanticDataForDesigner(
+									$sourceTitle,
+									$onlyProperties,
+									$depth + 1,
+									$maxDepth,
+									$visited
+								);
+							} else {
+								self::$data[$sourceTitle->getFullText()] = null;
+							}
+						}
+					}
+				}
 			}
 		}
+
 		$output['context'] = 'KnowledgeGraphDesigner';
 		self::$data[$title->getFullText()] = $output;
 	}

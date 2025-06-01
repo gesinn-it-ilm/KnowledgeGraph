@@ -319,48 +319,22 @@ KnowledgeGraph = function () {
 							seenValues.add(value.value);
 
 							PropIdPropLabelMap[legendLabel].push(value.value);
-
-							// separate logic for KnowledgeGraphDesigner and parserfunction
-							if (data[label]?.context === 'KnowledgeGraphDesigner') {
-								let isInverse = false;
-								if (Nodes.get(value.value)) {
-									isInverse = true;
-								}
-
-								edgeConfig = jQuery.extend(
-									JSON.parse(JSON.stringify(Config.graphOptions.edges)),
-									isInverse
-										? {
-												from: label,
-												to: value.value,
-												label: '-' + propLabel,
-												group: label,
-										}
-										: {
-												from: label,
-												to: value.value,
-												label: propLabel,
-												group: label,
-										}
-								);
-							} else {
-								edgeConfig = jQuery.extend(
-									JSON.parse(JSON.stringify(Config.graphOptions.edges)),
-									value.direction === 'inverse'
-										? {
-												from: value.value,
-												to: label,
-												label: '-' + propLabel,
-												group: label,
-										}
-										: {
-												from: label,
-												to: value.value,
-												label: propLabel,
-												group: label,
-										}
-								);
-							}
+							let edgeConfig = jQuery.extend(
+								JSON.parse(JSON.stringify(Config.graphOptions.edges)),
+								value.direction === 'inverse'
+									? {
+											from: value.value,
+											to: label,
+											label: '-' + propLabel,
+											group: label,
+									}
+									: {
+											from: label,
+											to: value.value,
+											label: propLabel,
+											group: label,
+									}
+							);
 
 							let exists = false;
 							Edges.forEach((edge) => {
