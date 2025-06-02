@@ -706,7 +706,7 @@ nodes=TestPage
 
 		if ( count( $onlyProperties ) > 0 ) {
 			foreach ( $onlyProperties as $property ) {
-				$property = str_replace( ' ', '_', $property );
+				$property = str_replace( '_', ' ', $property );
 				$propertyDI = \SMW\DIProperty::newFromUserLabel( $property );
 				$results = self::getSubjectsByProperty(
 					$propertyDI,
