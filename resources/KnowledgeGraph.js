@@ -584,23 +584,64 @@ KnowledgeGraph = function () {
 					);
 					var properties = data[titleFullText].properties;
 					for (var i in properties) {
+						var prop = properties[i];
 						var url = mw.config.get('wgArticlePath').replace('$1', i);
 
-						$el.append(
-							$(
-								'<li><a target="_blank" href="' +
-									url +
-									'">' +
-									(properties[i].preferredLabel !== ''
-										? properties[i].preferredLabel
-										: properties[i].canonicalLabel) +
-									'</a> (' +
-									properties[i].typeLabel +
-									')' +
-									'</li>'
-							)
-						);
+						var hasDirect = false;
+						var hasInverse = false;
+
+						if (Array.isArray(prop.values)) {
+							for (var j = 0; j < prop.values.length; j++) {
+								var val = prop.values[j];
+								if (val.hasOwnProperty('direction') && val.direction === 'inverse') {
+									hasInverse = true;
+								} else {
+									hasDirect = true;
+								}
+							}
+						}
+
+						if (hasDirect) {
+							var labelDirect =
+								(prop.preferredLabel !== ''
+									? prop.preferredLabel
+									: prop.canonicalLabel) + ' (' + prop.typeLabel + ')';
+
+							$el.append(
+								$('<li><a target="_blank" href="' + url + '">' + labelDirect + '</a></li>')
+							);
+						}
+
+						if (hasInverse) {
+							var labelInverse =
+								'- ' +
+								(prop.preferredLabel !== ''
+									? prop.preferredLabel
+									: prop.canonicalLabel) + ' (' + prop.typeLabel + ')';
+
+							$el.append(
+								$('<li><a target="_blank" href="' + url + '">' + labelInverse + '</a></li>')
+							);
+						}
 					}
+					// for (var i in properties) {
+					// 	var url = mw.config.get('wgArticlePath').replace('$1', i);
+
+					// 	$el.append(
+					// 		$(
+					// 			'<li><a target="_blank" href="' +
+					// 				url +
+					// 				'">' +
+					// 				(properties[i].preferredLabel !== ''
+					// 					? properties[i].preferredLabel
+					// 					: properties[i].canonicalLabel) +
+					// 				'</a> (' +
+					// 				properties[i].typeLabel +
+					// 				')' +
+					// 				'</li>'
+					// 		)
+					// 	);
+					// }
 					break;
 
 				case 'by-properties':

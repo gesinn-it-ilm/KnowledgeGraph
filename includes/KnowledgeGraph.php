@@ -328,14 +328,18 @@ nodes=TestPage
 		}
 
 		$results = [];
-		if ( $propertyText->isInverse() ) {
-			$props = $propertyText->getKey();
-			$props = str_replace( '-', '', $props );
-			$propertyText = \SMW\DIProperty::newFromUserLabel( $props );
-			$results = self::$SMWStore->getPropertySubjects( $propertyText, $targetDIValue, $requestOptions );
-			$propertyText->setInverse( true );
+		if ( is_string( $propertyText ) ) {
+			$results = self::$SMWStore->getPropertySubjects( $DIProperty, null, $requestOptions );
 		} else {
-			$results = self::$SMWStore->getPropertySubjects( $DIProperty, $targetDIValue, $requestOptions );
+			if ( $propertyText->isInverse() ) {
+				$props = $propertyText->getKey();
+				$props = str_replace( '-', '', $props );
+				$propertyText = \SMW\DIProperty::newFromUserLabel( $props );
+				$results = self::$SMWStore->getPropertySubjects( $propertyText, $targetDIValue, $requestOptions );
+				$propertyText->setInverse( true );
+			} else {
+				$results = self::$SMWStore->getPropertySubjects( $DIProperty, $targetDIValue, $requestOptions );
+			}
 		}
 
 		$ret = [];
@@ -700,6 +704,50 @@ nodes=TestPage
 			}
 		}
 
+		if ( count( $onlyProperties ) > 0 ) {
+			foreach ( $onlyProperties as $property ) {
+				$property = str_replace( ' ', '_', $property );
+				$propertyDI = \SMW\DIProperty::newFromUserLabel( $property );
+				$results = self::getSubjectsByProperty(
+					$propertyDI,
+					$limit,
+					0,
+					$fullTitleText
+				);
+
+				foreach ( $results as $subjectDI ) {
+					$sourceTitle = Title::newFromText(
+						$subjectDI->getDBkey(),
+						$subjectDI->getNamespace()
+					);
+
+					if ( $sourceTitle && !in_array( $sourceTitle->getFullText(), $visited, true ) ) {
+						self::addInversePropertyToOutput(
+							$property,
+							$sourceTitle,
+							"",
+							"_wpg",
+							$output
+						);
+
+						if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
+							if ( $depth < $maxDepth ) {
+								self::setSemanticDataForDesigner(
+									$sourceTitle,
+									$onlyProperties,
+									$depth + 1,
+									$maxDepth,
+									$visited
+								);
+							} else {
+								self::$data[$sourceTitle->getFullText()] = null;
+							}
+						}
+					}
+				}
+			}
+		}
+
 		$output['context'] = 'KnowledgeGraphDesigner';
 		self::$data[$title->getFullText()] = $output;
 	}
@@ -891,6 +939,148 @@ nodes=TestPage
 			$visited,
 			$output
 		);
+
+		self::$data[$title->getFullText()] = $output;
+	}
+
+	/**
+	 * @see https://gerrit.wikimedia.org/r/plugins/gitiles/mediawiki/extensions/PageProperties/+/refs/heads/1.0.3/includes/PageProperties.php
+	 * @param Title|MediaWiki\Title\Title $title
+	 * @param array $onlyProperties
+	 * @param int $depth
+	 * @param int $maxDepth
+	 * @return array
+	 */
+	public static function setSemanticData( Title $title, $onlyProperties, $depth, $maxDepth ) {
+		$services = MediaWikiServices::getInstance();
+		$langCode = \RequestContext::getMain()->getLanguage()->getCode();
+		$propertyRegistry = \SMW\PropertyRegistry::getInstance();
+		$dataTypeRegistry = \SMW\DataTypeRegistry::getInstance();
+
+		$wikiPage = self::getWikiPage( $title );
+
+		$categories = [];
+		$iterator = $wikiPage->getCategories();
+
+		while ( $iterator->valid() ) {
+			$text_ = $iterator->current()->getText();
+			$categories[] = $text_;
+			$iterator->next();
+
+			// if ( !array_key_exists( $text_, self::$categories ) ) {
+			// 	self::$categories[$text_] = [];
+			// }
+
+			// if ( !in_array( $title->getFullText(), self::$categories[$text_] ) ) {
+			// 	self::$categories[$text_][] = $title->getFullText();
+			// }
+		}
+
+		$output = [
+			'properties' => [],
+			'categories' => $categories
+		];
+
+		if ( $title->getNamespace() === NS_FILE ) {
+			$img = $services->getRepoGroup()->findFile( $title );
+			if ( $img ) {
+				$output['src'] = $img->getFullUrl();
+			}
+		}
+
+		// ***important, this prevents infinite recursion
+		// no properties
+		self::$data[$title->getFullText()] = [];
+
+		$subject = new \SMW\DIWikiPage( $title->getDbKey(), $title->getNamespace() );
+		$semanticData = self::$SMWStore->getSemanticData( $subject );
+
+		foreach ( $semanticData->getProperties() as $property ) {
+			$key = $property->getKey();
+			if ( in_array( $key, self::$exclude ) ) {
+				continue;
+			}
+
+			$propertyDv = self::$SMWDataValueFactory->newDataValueByItem( $property, null );
+			if ( !$property->isUserAnnotable() || !$propertyDv->isVisible() ) {
+				continue;
+			}
+
+			$canonicalLabel = $property->getCanonicalLabel();
+			$preferredLabel = $property->getPreferredLabel();
+
+			if ( count( $onlyProperties )
+				&& !in_array( $canonicalLabel, $onlyProperties )
+				&& !in_array( $preferredLabel, $onlyProperties )
+			) {
+				continue;
+			}
+
+			$description = $propertyRegistry->findPropertyDescriptionMsgKeyById( $key );
+			$typeID = $property->findPropertyTypeID();
+
+			if ( $description ) {
+				$description = wfMessage( $description )->text();
+			}
+			$typeLabel = $dataTypeRegistry->findTypeLabel( $typeID );
+
+			if ( empty( $typeLabel ) ) {
+				$typeId_ = $dataTypeRegistry->getFieldType( $typeID );
+				$typeLabel = $dataTypeRegistry->findTypeLabel( $typeId_ );
+			}
+
+			$propertyTitle = $property->getCanonicalDiWikiPage()->getTitle();
+			$objKey = $propertyTitle->getFullText();
+
+			$output['properties'][$objKey] = [
+				// 'url' => $propertyTitle->getFullURL(),
+				'key' => $key,
+				'typeId' => $typeID,
+				'canonicalLabel' => $canonicalLabel,
+				'preferredLabel' => $preferredLabel,
+				'typeLabel' => $typeLabel,
+				'description' => $description,
+				'values' => [],
+			];
+
+			foreach ( $semanticData->getPropertyValues( $property ) as $dataItem ) {
+				$dataValue = self::$SMWDataValueFactory->newDataValueByItem( $dataItem, $property );
+				if ( $dataValue->isValid() ) {
+					// *** are they necessary ?
+					$dataValue->setOption( 'no.text.transformation', true );
+					$dataValue->setOption( 'form/short', true );
+
+					$obj_ = [];
+					if ( $typeID === '_wpg' ) {
+						$title_ = $dataItem->getTitle();
+						if ( $title_ && $title_->isKnown() ) {
+							if ( !isset( self::$data[$title_->getFullText()] ) ) {
+								if ( $depth < $maxDepth ) {
+									self::setSemanticData( $title_, $onlyProperties, ++$depth, $maxDepth );
+								} else {
+									// not loaded
+									self::$data[$title_->getFullText()] = null;
+								}
+							}
+							$obj_['value'] = $title_->getFullText();
+
+							if ( $title_->getNamespace() === NS_FILE ) {
+								$img_ = $services->getRepoGroup()->findFile( $title_ );
+								if ( $img_ ) {
+									$obj_['src'] = $img_->getFullUrl();
+								}
+							}
+						} elseif ( !isset( self::$data[str_replace( '_', ' ', $dataValue->getWikiValue() )] ) ) {
+							$obj_['value'] = str_replace( '_', ' ', $dataValue->getWikiValue() );
+						}
+					} else {
+						$obj_['value'] = $dataValue->getWikiValue();
+					}
+
+					$output['properties'][$objKey]['values'][] = $obj_;
+				}
+			}
+		}
 
 		self::$data[$title->getFullText()] = $output;
 	}

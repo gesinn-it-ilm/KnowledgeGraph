@@ -52,12 +52,11 @@ class KnowledgeGraphApiLoadProperties extends ApiBase {
 			}
 		}
 
-		$params['properties'] = [];
-		// $params['depth'] = 0;
+		$params['properties'] = explode( '|', $params['properties'] );
 
 		foreach ( $titles as $titleText => $title_ ) {
 			if ( !isset( self::$data[$titleText] ) ) {
-				\KnowledgeGraph::setSemanticDataForDesigner( $title_, $params['properties'], 0, $params['depth'] );
+				\KnowledgeGraph::setSemanticData( $title_, $params['properties'], 0, $params['depth'] );
 			}
 		}
 
