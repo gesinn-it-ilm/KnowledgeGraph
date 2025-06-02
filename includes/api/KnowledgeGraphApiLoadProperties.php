@@ -37,6 +37,7 @@ class KnowledgeGraphApiLoadProperties extends ApiBase {
 		\KnowledgeGraph::initSMW();
 
 		$titles_ = explode( '|', $params['properties'] );
+		sort( $titles_ );
 		$titles = [];
 		foreach ( $titles_ as $titleText ) {
 			$title_ = TitleClass::makeTitleSafe( SMW_NS_PROPERTY, $titleText );
@@ -53,10 +54,9 @@ class KnowledgeGraphApiLoadProperties extends ApiBase {
 		}
 
 		$params['properties'] = explode( '|', $params['properties'] );
-
 		foreach ( $titles as $titleText => $title_ ) {
 			if ( !isset( self::$data[$titleText] ) ) {
-				\KnowledgeGraph::setSemanticData( $title_, $params['properties'], 0, $params['depth'] );
+				\KnowledgeGraph::setSemanticDataForDesigner( $title_, $params['properties'], 0, $params['depth'] );
 			}
 		}
 

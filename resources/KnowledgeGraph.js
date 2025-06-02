@@ -624,24 +624,6 @@ KnowledgeGraph = function () {
 							);
 						}
 					}
-					// for (var i in properties) {
-					// 	var url = mw.config.get('wgArticlePath').replace('$1', i);
-
-					// 	$el.append(
-					// 		$(
-					// 			'<li><a target="_blank" href="' +
-					// 				url +
-					// 				'">' +
-					// 				(properties[i].preferredLabel !== ''
-					// 					? properties[i].preferredLabel
-					// 					: properties[i].canonicalLabel) +
-					// 				'</a> (' +
-					// 				properties[i].typeLabel +
-					// 				')' +
-					// 				'</li>'
-					// 		)
-					// 	);
-					// }
 					break;
 
 				case 'by-properties':
