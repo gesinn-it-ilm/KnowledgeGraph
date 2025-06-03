@@ -122,7 +122,7 @@ KnowledgeGraph = function () {
 	}
 
 	function loadNodes(obj) {
-		if (obj.title !== null) {
+		if (obj.title !== null && obj.properties === null) {
 			var payload = {
 				action: 'knowledgegraph-load-nodes',
 				titles: obj.title,
@@ -133,9 +133,11 @@ KnowledgeGraph = function () {
 			var payload = {
 				action: 'knowledgegraph-load-properties',
 				properties: obj.properties.join('|'),
+				nodes: titles,
 				depth: obj.depth,
 				limit: obj.limit,
 				offset: obj.offset,
+				inversePropsIncluded: inversePropsIncluded
 			};
 		} else if (obj.categories !== null) {
 			var payload = {
@@ -470,6 +472,12 @@ KnowledgeGraph = function () {
 
 								case 'by-properties':
 									properties = thisDialog.propertiesInputWidget.getValue();
+									titles = thisDialog.titlesInputWidget.getValue();
+
+									if (!titles.length) {
+										resolve();
+										return;
+									}
 
 									if (!properties.length) {
 										resolve();
@@ -478,6 +486,7 @@ KnowledgeGraph = function () {
 									depth = thisDialog.depthInputWidgetProperties.getValue();
 									limit = thisDialog.limitInputWidgetProperties.getValue();
 									offset = thisDialog.offsetInputWidgetProperties.getValue();
+									inversePropsIncluded = thisDialog.includeInverseCheckbox.isSelected();
 									break;
 
 								case 'by-categories':
@@ -619,8 +628,6 @@ KnowledgeGraph = function () {
 								}
 							}
 						}
-
-						var labelType = prop.typeLabel;
 
 						if (hasDirect) {
 							var labelDirect =
