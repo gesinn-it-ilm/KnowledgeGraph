@@ -8,6 +8,7 @@
  */
 
 use MediaWiki\Extension\KnowledgeGraph\Aliases\Title as TitleClass;
+use MediaWiki\MediaWikiServices;
 
 class KnowledgeGraphApiLoadNodes extends ApiBase {
 
@@ -106,12 +107,45 @@ class KnowledgeGraphApiLoadNodes extends ApiBase {
 		self::$SMWStore = \SMW\StoreFactory::getStore();
 		self::$SMWDataValueFactory = SMW\DataValueFactory::getInstance();
 
+		$services = MediaWikiServices::getInstance();
+		$urlUtils = $services->getUrlUtils();
+		$httpRequestFactory = $services->getHttpRequestFactory();
+
+		$scriptPath = $services->getMainConfig()->get( 'ScriptPath' );
+		$server = $services->getMainConfig()->get( 'Server' );
+		$apiUrl = $server . $scriptPath . '/api.php';
+
+		$queryParams = [
+			'action' => 'query',
+			'list' => 'allpages',
+			'apnamespace' => 102,
+			'aplimit' => 'max',
+			'format' => 'json'
+		];
+
+		$query = http_build_query( $queryParams );
+		$response = $httpRequestFactory->get( "$apiUrl?$query", [], __METHOD__ );
+		$data = json_decode( $response, true );
+
+		$propertyTitles = array_column( $data['query']['allpages'], 'title' );
+		$propertyNames = array_map( static function ( $title ) {
+			return substr( $title, strrpos( $title, ':' ) + 1 );
+		}, $propertyTitles );
+
 		$params['properties'] = ( !empty( $params['properties'] ) ?
 			json_decode( $params['properties'], true ) : [] );
 
 		$titles = explode( '|', $params['titles'] );
 		foreach ( $titles as $titleText ) {
 			$title_ = TitleClass::newFromText( $titleText );
+
+			foreach ( $propertyNames as $propertyName ) {
+				$propertyDI = \SMW\DIProperty::newFromUserLabel( $propertyName );
+				$results = \KnowledgeGraph::getSubjectsByProperty( $propertyDI, $limit, 0, $titleText );
+				if ( count( $results ) > 0 ) {
+					$params['properties'][] = $propertyName;
+				}
+			}
 
 			$subject = new \SMW\DIWikiPage( $title_->getDbKey(), $title_->getNamespace() );
 			$semanticData = self::$SMWStore->getSemanticData( $subject );

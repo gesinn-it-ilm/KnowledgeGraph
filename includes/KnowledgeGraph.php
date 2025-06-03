@@ -706,8 +706,8 @@ nodes=TestPage
 
 		if ( count( $onlyProperties ) > 0 ) {
 			foreach ( $onlyProperties as $property ) {
-				$property = str_replace( '_', ' ', $property );
-				$propertyDI = \SMW\DIProperty::newFromUserLabel( $property );
+				$propertyLabel = str_replace( '_', ' ', $property );
+				$propertyDI = \SMW\DIProperty::newFromUserLabel( $propertyLabel );
 				$results = self::getSubjectsByProperty(
 					$propertyDI,
 					$limit,
@@ -723,12 +723,46 @@ nodes=TestPage
 
 					if ( $sourceTitle && !in_array( $sourceTitle->getFullText(), $visited, true ) ) {
 						self::addInversePropertyToOutput(
-							$property,
+							$propertyLabel,
 							$sourceTitle,
 							"",
 							"_wpg",
 							$output
 						);
+
+						$subject = new \SMW\DIWikiPage( $sourceTitle->getDbKey(), $sourceTitle->getNamespace() );
+						$semanticData = self::$SMWStore->getSemanticData( $subject );
+
+						foreach ( $semanticData->getProperties() as $property ) {
+							$key = $property->getKey();
+							if ( in_array( $key, self::$exclude ) ) {
+								continue;
+							}
+
+							$propertyDv = self::$SMWDataValueFactory->newDataValueByItem( $property, null );
+							if ( !$property->isUserAnnotable() || !$propertyDv->isVisible() ) {
+								continue;
+							}
+
+							$typeID = $property->findPropertyTypeID();
+
+							if ( $typeID === '_wpg' ) {
+								$typeLabel = $dataTypeRegistry->findTypeLabel( $typeID );
+
+								if ( empty( $typeLabel ) ) {
+									$typeId_ = $dataTypeRegistry->getFieldType( $typeID );
+									$typeLabel = $dataTypeRegistry->findTypeLabel( $typeId_ );
+								}
+
+								$canonicalName = MediaWikiServices::getInstance()
+								->getNamespaceInfo()
+								->getCanonicalName( SMW_NS_PROPERTY );
+
+								$inverseKey = $canonicalName . ':' . $propertyLabel;
+
+								$output['properties'][$inverseKey]['typeLabel'] = $typeLabel;
+							}
+						}
 
 						if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
 							if ( $depth < $maxDepth ) {
@@ -1141,7 +1175,11 @@ nodes=TestPage
 		string $typeID,
 		array &$output
 	): void {
-		$inverseKey = "Attribut:" . $cleanLabel;
+		$canonicalName = MediaWikiServices::getInstance()
+							->getNamespaceInfo()
+							->getCanonicalName( SMW_NS_PROPERTY );
+
+		$inverseKey = $canonicalName . ':' . $cleanLabel;
 
 		$obj_inv = [
 			'direction' => 'inverse',
@@ -1154,5 +1192,4 @@ nodes=TestPage
 		$output['properties'][$inverseKey]['typeId'] = $typeID;
 		$output['properties'][$inverseKey]['isInverse'] = true;
 	}
-
 }

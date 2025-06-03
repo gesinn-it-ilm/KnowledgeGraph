@@ -583,6 +583,25 @@ KnowledgeGraph = function () {
 							'</h3>'
 					);
 					var properties = data[titleFullText].properties;
+					Object.keys(properties).forEach(function (k1) {
+						var prop1 = properties[k1];
+
+						if (prop1.typeLabel) return;
+
+						Object.keys(properties).forEach(function (k2) {
+							if (k1 === k2) return;
+
+							var prop2 = properties[k2];
+							if (
+								prop2.canonicalLabel === prop1.canonicalLabel &&
+								prop2.typeLabel &&
+								(!prop1.typeLabel || prop1.typeLabel === '')
+							) {
+								prop1.typeLabel = prop2.typeLabel;
+							}
+						});
+					});
+
 					for (var i in properties) {
 						var prop = properties[i];
 						var url = mw.config.get('wgArticlePath').replace('$1', i);
@@ -600,6 +619,8 @@ KnowledgeGraph = function () {
 								}
 							}
 						}
+
+						var labelType = prop.typeLabel;
 
 						if (hasDirect) {
 							var labelDirect =
