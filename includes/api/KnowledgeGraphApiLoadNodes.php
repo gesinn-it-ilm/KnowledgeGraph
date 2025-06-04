@@ -153,6 +153,8 @@ class KnowledgeGraphApiLoadNodes extends ApiBase {
 			foreach ( $semanticData->getProperties() as $property ) {
 				$key = $property->getKey();
 
+				$typeID = $property->findPropertyTypeID();
+
 				if ( in_array( $key, self::$exclude ) ) {
 					continue;
 				}
@@ -165,8 +167,10 @@ class KnowledgeGraphApiLoadNodes extends ApiBase {
 				$key = str_replace( '_', ' ', $property->getKey() );
 
 				$params['properties'][] = $key;
+
 			}
 
+			$params['properties'] = array_unique( $params['properties'] );
 			if ( $title_ && $title_->isKnown() ) {
 				if ( !isset( self::$data[$title_->getFullText()] ) ) {
 					\KnowledgeGraph::setSemanticDataForDesigner( $title_, $params['properties'], 0, $params['depth'] );

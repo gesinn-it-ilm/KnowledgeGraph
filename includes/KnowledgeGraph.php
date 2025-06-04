@@ -590,7 +590,7 @@ nodes=TestPage
 				&& !in_array( $canonicalLabel, $onlyProperties )
 				&& !in_array( $preferredLabel, $onlyProperties )
 			) {
-				continue;
+				$onlyProperties[] = $canonicalLabel;
 			}
 
 			$description = $propertyRegistry->findPropertyDescriptionMsgKeyById( $key );
@@ -704,7 +704,9 @@ nodes=TestPage
 			}
 		}
 
+		$resultsToCheck = [];
 		if ( count( $onlyProperties ) > 0 ) {
+			$countProps = 0;
 			foreach ( $onlyProperties as $property ) {
 				$propertyLabel = str_replace( '_', ' ', $property );
 				$propertyDI = \SMW\DIProperty::newFromUserLabel( $propertyLabel );
@@ -714,12 +716,46 @@ nodes=TestPage
 					0,
 					$fullTitleText
 				);
+				$countProps++;
+				$countResults = 0;
+
+				if ( count( $results ) === 0 ) {
+					$visitedTitle = [];
+					foreach ( $resultsToCheck as $subjectDI ) {
+						$sourceTitle = Title::newFromText(
+							$subjectDI->getDBkey(),
+							$subjectDI->getNamespace()
+						);
+
+						if ( in_array( $sourceTitle->getFullText(), $visitedTitle, true ) ) {
+							continue;
+						}
+
+						if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
+							if ( $depth < $maxDepth ) {
+								self::setSemanticDataForDesigner(
+									$sourceTitle,
+									$onlyProperties,
+									$depth + 1,
+									$maxDepth,
+									$visited
+								);
+							} else {
+								self::$data[$sourceTitle->getFullText()] = null;
+							}
+
+							$visitedTitle[] = $sourceTitle->getFullText();
+						}
+					}
+				}
 
 				foreach ( $results as $subjectDI ) {
+					$resultsToCheck[] = $subjectDI;
 					$sourceTitle = Title::newFromText(
 						$subjectDI->getDBkey(),
 						$subjectDI->getNamespace()
 					);
+					$countResults++;
 
 					if ( $sourceTitle && !in_array( $sourceTitle->getFullText(), $visited, true ) ) {
 						self::addInversePropertyToOutput(
@@ -764,17 +800,107 @@ nodes=TestPage
 							}
 						}
 
-						if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
-							if ( $depth < $maxDepth ) {
-								self::setSemanticDataForDesigner(
-									$sourceTitle,
-									$onlyProperties,
-									$depth + 1,
-									$maxDepth,
-									$visited
+						if ( count( $onlyProperties ) === $countProps ) {
+							$visitedTitle = [];
+							foreach ( $resultsToCheck as $subjectDI ) {
+								$sourceTitle = Title::newFromText(
+									$subjectDI->getDBkey(),
+									$subjectDI->getNamespace()
 								);
-							} else {
-								self::$data[$sourceTitle->getFullText()] = null;
+
+								if ( in_array( $sourceTitle->getFullText(), $visitedTitle, true ) ) {
+									continue;
+								}
+
+								if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
+									if ( $depth < $maxDepth ) {
+										self::setSemanticDataForDesigner(
+											$sourceTitle,
+											$onlyProperties,
+											$depth + 1,
+											$maxDepth,
+											$visited
+										);
+									} else {
+										self::$data[$sourceTitle->getFullText()] = null;
+									}
+
+									$visitedTitle[] = $sourceTitle->getFullText();
+								}
+							}
+						}
+					}
+
+					if ( $sourceTitle ) {
+						self::addInversePropertyToOutput(
+							$propertyLabel,
+							$sourceTitle,
+							"",
+							"_wpg",
+							$output
+						);
+
+						$subject = new \SMW\DIWikiPage( $sourceTitle->getDbKey(), $sourceTitle->getNamespace() );
+						$semanticData = self::$SMWStore->getSemanticData( $subject );
+
+						foreach ( $semanticData->getProperties() as $property ) {
+							$key = $property->getKey();
+							if ( in_array( $key, self::$exclude ) ) {
+								continue;
+							}
+
+							$propertyDv = self::$SMWDataValueFactory->newDataValueByItem( $property, null );
+							if ( !$property->isUserAnnotable() || !$propertyDv->isVisible() ) {
+								continue;
+							}
+
+							$typeID = $property->findPropertyTypeID();
+
+							if ( $typeID === '_wpg' ) {
+								$typeLabel = $dataTypeRegistry->findTypeLabel( $typeID );
+
+								if ( empty( $typeLabel ) ) {
+									$typeId_ = $dataTypeRegistry->getFieldType( $typeID );
+									$typeLabel = $dataTypeRegistry->findTypeLabel( $typeId_ );
+								}
+
+								$canonicalName = MediaWikiServices::getInstance()
+								->getNamespaceInfo()
+								->getCanonicalName( SMW_NS_PROPERTY );
+
+								$inverseKey = $canonicalName . ':' . $propertyLabel;
+
+								$output['properties'][$inverseKey]['typeLabel'] = $typeLabel;
+							}
+						}
+
+						if ( count( $onlyProperties ) === $countProps ) {
+							$visitedTitle = [];
+							foreach ( $resultsToCheck as $subjectDI ) {
+								$sourceTitle = Title::newFromText(
+									$subjectDI->getDBkey(),
+									$subjectDI->getNamespace()
+								);
+
+								if ( in_array( $sourceTitle->getFullText(), $visitedTitle, true ) ) {
+									continue;
+								}
+
+								if ( !isset( self::$data[$sourceTitle->getFullText()] ) ) {
+									if ( $depth < $maxDepth ) {
+										self::setSemanticDataForDesigner(
+											$sourceTitle,
+											$onlyProperties,
+											$depth + 1,
+											$maxDepth,
+											$visited
+										);
+									} else {
+										self::$data[$sourceTitle->getFullText()] = null;
+									}
+
+									$visitedTitle[] = $sourceTitle->getFullText();
+								}
 							}
 						}
 					}
