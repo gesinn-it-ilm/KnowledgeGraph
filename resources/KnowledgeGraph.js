@@ -743,16 +743,16 @@ KnowledgeGraph = function () {
 				}
 
 				var text = `{{#knowledgegraph:
-							nodes=${nodes.join(', ')}
-							|properties=${properties.join(', ')}
-							|depth=0
-							|graph-options=
-							${propertyOptions}|show-property-type=true
-							|width=400px
-							|height=400px
-							|properties-panel=false
-							|categories-panel=false
-							}}`;
+nodes=${nodes.join(', ')}
+|properties=${properties.join(', ')}
+|depth=0
+|graph-options=
+${propertyOptions}|show-property-type=true
+|width=400px
+|height=400px
+|properties-panel=false
+|categories-panel=false
+}}`;
 			function legacyCopy(text) {
 				const textarea = document.createElement('textarea');
 				textarea.value = text;
