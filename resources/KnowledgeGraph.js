@@ -256,6 +256,7 @@ KnowledgeGraph = function () {
 	}
 
 	function createNodes(data) {
+		let seenValues = new Set();
 		for (var label in data) {
 			if (label in Data && Data[label] !== null) continue;
 
@@ -311,9 +312,7 @@ KnowledgeGraph = function () {
 				if (Config['properties-panel']) {
 					addLegendEntry(property.canonicalLabel, legendLabel, PropColors[property.canonicalLabel]);
 				}
-
-				let seenValues = new Set();
-
+				
 				switch (property.typeId) {
 					case '_wpg':
 						for (let value of property.values) {
@@ -731,34 +730,53 @@ KnowledgeGraph = function () {
 						continue;
 					}
 					for (var ii in Data[i].properties) {
-						var property = Data[i].properties[ii];
-						if (properties.indexOf(property.canonicalLabel) === -1) {
-							properties.push(property.canonicalLabel);
-							propertyOptions += `|property-options?${property.canonicalLabel}=\n`;
+						const property = Data[i].properties[ii];
+						const label = property.canonicalLabel;
+
+						if (properties.indexOf(label) === -1) {
+							properties.push(label);
+							properties.push('-' + label);
+							propertyOptions += `|property-options?${label}=\n`;
+							propertyOptions += `|property-options?-${label}=\n`; 
 						}
 					}
 				}
 
 				var text = `{{#knowledgegraph:
-nodes=${nodes.join(', ')}
-|properties=${properties.join(', ')}
-|depth=0
-|graph-options=
-${propertyOptions}|show-property-type=true
-|width=400px
-|height=400px
-|properties-panel=false
-|categories-panel=false
-}}`;
-				if (navigator.clipboard) {
-					navigator.clipboard.writeText(text).then(function () {
-						alert(mw.msg('knowledgegraph-copied-to-clipboard'));
-					});
-				} else {
-					alert('clipboard not available');
+							nodes=${nodes.join(', ')}
+							|properties=${properties.join(', ')}
+							|depth=0
+							|graph-options=
+							${propertyOptions}|show-property-type=true
+							|width=400px
+							|height=400px
+							|properties-panel=false
+							|categories-panel=false
+							}}`;
+			function legacyCopy(text) {
+				const textarea = document.createElement('textarea');
+				textarea.value = text;
+				textarea.style.position = 'fixed';
+				document.body.appendChild(textarea);
+				textarea.focus();
+				textarea.select();
+				try {
+					document.execCommand('copy');
+					alert(mw.msg('knowledgegraph-copied-to-clipboard'));
+				} catch (err) {
+					alert('Copy failed');
 				}
+				document.body.removeChild(textarea);
+			}
 
-				break;
+			if (navigator.clipboard) {
+				navigator.clipboard.writeText(text).then(function () {
+					alert(mw.msg('knowledgegraph-copied-to-clipboard'));
+				}).catch(() => legacyCopy(text));
+			} else {
+				legacyCopy(text);
+			}
+			break;
 
 			case 'show-config':
 				Config.graphOptions.configure.enabled =
