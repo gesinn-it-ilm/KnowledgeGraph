@@ -149,15 +149,12 @@ KnowledgeGraph = function () {
 			};
 		}
 
-		// console.log('payload', payload);
-
 		return new Promise((resolve, reject) => {
 			mw.loader.using('mediawiki.api', function () {
 				new mw.Api()
 					.postWithToken('csrf', payload)
 					.done(function (thisRes) {
 						if ('data' in thisRes[payload.action]) {
-							// console.log('data', data);
 							var data_ = JSON.parse(thisRes[payload.action].data);
 							resolve(data_);
 						} else {
@@ -257,12 +254,19 @@ KnowledgeGraph = function () {
 
 	function createNodes(data) {
 		for (var label in data) {
-			if (label in Data && Data[label] !== null) continue;
+			if (label in Data && Data[label] !== null) {
+				continue;
+			}
 
 			addArticleNode(data, label);
-			if (data[label] === null) continue;
 
-			if (!(label in Categories)) Categories[label] = [];
+			if (data[label] === null) {
+				continue;
+			}
+
+			if (!(label in Categories)) {
+				Categories[label] = [];
+			}
 
 			for (var i in data[label].categories) {
 				var category = data[label].categories[i];
@@ -272,14 +276,15 @@ KnowledgeGraph = function () {
 			}
 
 			for (var i in data[label].properties) {
-				let seenValues = new Set();
 				var property = data[label].properties[i];
 
 				if (!(property.canonicalLabel in PropColors)) {
-					let color_;
+					var color_;
 					function colorExists() {
 						for (var j in PropColors) {
-							if (PropColors[j] === color_) return true;
+							if (PropColors[j] === color_) {
+								return true;
+							}
 						}
 						return false;
 					}
@@ -289,7 +294,7 @@ KnowledgeGraph = function () {
 					PropColors[property.canonicalLabel] = color_;
 				}
 
-				let options =
+				var options =
 					property.preferredLabel in Config.propertyOptions
 						? Config.propertyOptions[property.preferredLabel]
 						: property.canonicalLabel in Config.propertyOptions
@@ -303,80 +308,67 @@ KnowledgeGraph = function () {
 					options.color = PropColors[property.canonicalLabel];
 				}
 
-				let legendLabel = property.preferredLabel !== '' ? property.preferredLabel : property.canonicalLabel;
+				var legendLabel =
+					property.preferredLabel !== ''
+						? property.preferredLabel
+						: property.canonicalLabel;
+
 				if (!(legendLabel in PropIdPropLabelMap)) {
 					PropIdPropLabelMap[legendLabel] = [];
 				}
-				let propLabel = legendLabel + (!Config['show-property-type'] ? '' : ' (' + property.typeLabel + ')');
+
+				var propLabel =
+					legendLabel +
+					(!Config['show-property-type']
+						? ''
+						: ' (' + property.typeLabel + ')');
 
 				if (Config['properties-panel']) {
-					addLegendEntry(property.canonicalLabel, legendLabel, PropColors[property.canonicalLabel]);
+					addLegendEntry(
+						property.canonicalLabel,
+						legendLabel,
+						PropColors[property.canonicalLabel]
+					);
 				}
-				
+
 				switch (property.typeId) {
 					case '_wpg':
-						for (let value of property.values) {
-							if (seenValues.has(value.value)) continue;
-							seenValues.add(value.value);
+						for (var ii in property.values) {
+							var targetLabel = property.values[ii].value;
+							PropIdPropLabelMap[legendLabel].push(targetLabel);
 
-							PropIdPropLabelMap[legendLabel].push(value.value);
-							let edgeConfig = jQuery.extend(
+							var from = property.inverse ? targetLabel : label;
+							var to = property.inverse ? label : targetLabel;
+
+							var edgeConfig = jQuery.extend(
 								JSON.parse(JSON.stringify(Config.graphOptions.edges)),
-								value.direction === 'inverse'
-									? {
-											from: value.value,
-											to: label,
-											label: (value.direction === 'inverse' ? '-' : '') + propLabel,
-											group: label,
+								{
+									from: from,
+									to: to,
+									label: propLabel,
+									group: label,
+									arrows: {
+										to: { enabled: true }
 									}
-									: {
-											from: label,
-											to: value.value,
-											label: propLabel,
-											group: label,
-									}
+								}
 							);
 
-							let exists = false;
-							Edges.forEach((edge) => {
-								const labelsMatch = edge.label === edgeConfig.label || edge.label === '-' + edgeConfig.label || '-' + edge.label === edgeConfig.label;
-								const sameDirection = edge.from === edgeConfig.from && edge.to === edgeConfig.to;
-								const oppositeDirection = edge.from === edgeConfig.to && edge.to === edgeConfig.from;
+							Edges.add(edgeConfig);
 
-								if (labelsMatch && (sameDirection || oppositeDirection)) {
-									exists = true;
-								}
-							});
-
-							edgeConfig.arrows.to.enabled = true;
-
-							if (!exists) {
-								Edges.add(edgeConfig);
-							}
-
-							if (value.src && mw.config.get('KnowledgeGraphShowImages') === true) {
+							if (
+								property.values[ii].src &&
+								mw.config.get('KnowledgeGraphShowImages') === true
+							) {
 								options.shape = 'image';
-								options.image = value.src;
+								options.image = property.values[ii].src;
 							}
 
-							addArticleNode(data, value.value, options);
+							addArticleNode(data, targetLabel, options);
 						}
 						break;
 
 					default:
-						let filteredValues;
-						// separate logic for KnowledgeGraphDesigner and parserfunction
-						if (data[label]?.context === 'KnowledgeGraphDesigner') {
-							filteredValues = property.values.filter(v => !seenValues.has(v.value));
-						} else {
-							filteredValues = property.values.filter(v => 'direction' in v && !seenValues.has(v.value));
-						}
-
-						if (filteredValues.length === 0) break;
-
-						for (let val of filteredValues) seenValues.add(val.value);
-
-						let valueId = `${i}#${KnowledgeGraphFunctions.uuidv4()}`;
+						var valueId = `${i}#${KnowledgeGraphFunctions.uuidv4()}`;
 						PropIdPropLabelMap[legendLabel].push(valueId);
 
 						Edges.add({
@@ -386,14 +378,15 @@ KnowledgeGraph = function () {
 							group: label,
 						});
 
-						let propValue = filteredValues.map((x) => x.value).join(', ');
+						var propValue = property.values.map((x) => x.value).join(', ');
 
 						Nodes.add(
 							jQuery.extend(options, {
 								id: valueId,
-								label: propValue.length <= maxPropValueLength
-									? propValue
-									: propValue.substring(0, maxPropValueLength) + '…',
+								label:
+									propValue.length <= maxPropValueLength
+										? propValue
+										: propValue.substring(0, maxPropValueLength) + '…',
 							})
 						);
 				}
@@ -406,7 +399,6 @@ KnowledgeGraph = function () {
 	function HideNodesRec(nodeId) {
 		var children = Network.getConnectedNodes(nodeId);
 		// children = children.filter((x) => excludedIds.indexOf(x) === -1);
-		// console.log('children', children);
 		var updateNodes = [];
 		for (var nodeId_ of children) {
 			if (!(nodeId_ in Data)) {
@@ -473,15 +465,34 @@ KnowledgeGraph = function () {
 									properties = thisDialog.propertiesInputWidget.getValue();
 									titles = thisDialog.titlesInputWidget.getValue();
 
-									if (!titles.length) {
+									if (!titles.length || !properties.length) {
 										resolve();
 										return;
 									}
 
-									if (!properties.length) {
+									const existingTitles = [];
+									const newTitles = [];
+
+									for (let i = 0; i < titles.length; i++) {
+										const titleObj = mw.Title.newFromText( titles[i] );
+										if (!titleObj) continue;
+
+										const fullTitle = titleObj.getPrefixedText();
+										if (fullTitle in Data) {
+											existingTitles.push( fullTitle );
+										} else {
+											newTitles.push( fullTitle );
+										}
+									}
+
+									if (newTitles.length === 0) {
+										thisDialog.actions.setMode('existing-node');
+										thisDialog.initializeResultsPanel('existing-node');
 										resolve();
 										return;
 									}
+									thisDialog._titlesToProcess = newTitles;
+									thisDialog._skippedTitles = existingTitles;
 									depth = thisDialog.depthInputWidgetProperties.getValue();
 									limit = thisDialog.limitInputWidgetProperties.getValue();
 									offset = thisDialog.offsetInputWidgetProperties.getValue();
@@ -499,8 +510,6 @@ KnowledgeGraph = function () {
 									limit = thisDialog.limitInputWidgetCategories.getValue();
 									offset = thisDialog.offsetInputWidgetCategories.getValue();
 									break;
-
-								// console.log('properties', properties);
 							}
 
 							loadNodes({
@@ -512,7 +521,6 @@ KnowledgeGraph = function () {
 								offset: parseInt(offset),
 							})
 								.then(function (data) {
-									// console.log('data', data);
 									// Properties = data[titleFullText];
 									TmpData = data;
 									if (selectedTab === 'by-article') {
@@ -591,69 +599,76 @@ KnowledgeGraph = function () {
 							'</h3>'
 					);
 					var properties = data[titleFullText].properties;
-					Object.keys(properties).forEach(function (k1) {
-						var prop1 = properties[k1];
-
-						if (prop1.typeLabel) return;
-
-						Object.keys(properties).forEach(function (k2) {
-							if (k1 === k2) return;
-
-							var prop2 = properties[k2];
-							if (
-								prop2.canonicalLabel === prop1.canonicalLabel &&
-								prop2.typeLabel &&
-								(!prop1.typeLabel || prop1.typeLabel === '')
-							) {
-								prop1.typeLabel = prop2.typeLabel;
-							}
-						});
-					});
-
 					for (var i in properties) {
-						var prop = properties[i];
 						var url = mw.config.get('wgArticlePath').replace('$1', i);
 
-						var hasDirect = false;
-						var hasInverse = false;
-
-						if (Array.isArray(prop.values)) {
-							for (var j = 0; j < prop.values.length; j++) {
-								var val = prop.values[j];
-								if (val.hasOwnProperty('direction') && val.direction === 'inverse') {
-									hasInverse = true;
-								} else {
-									hasDirect = true;
-								}
-							}
-						}
-
-						if (hasDirect) {
-							var labelDirect =
-								(prop.preferredLabel !== ''
-									? prop.preferredLabel
-									: prop.canonicalLabel) + ' (' + prop.typeLabel + ')';
-
-							$el.append(
-								$('<li><a target="_blank" href="' + url + '">' + labelDirect + '</a></li>')
-							);
-						}
-
-						if (hasInverse) {
-							var labelInverse =
-								'- ' +
-								(prop.preferredLabel !== ''
-									? prop.preferredLabel
-									: prop.canonicalLabel) + ' (' + prop.typeLabel + ')';
-
-							$el.append(
-								$('<li><a target="_blank" href="' + url + '">' + labelInverse + '</a></li>')
-							);
-						}
+						$el.append(
+							$(
+								'<li><a target="_blank" href="' +
+									url +
+									'">' +
+									(properties[i].preferredLabel !== ''
+										? properties[i].preferredLabel
+										: properties[i].canonicalLabel) +
+									'</a> (' +
+									properties[i].typeLabel +
+									')' +
+									'</li>'
+							)
+						);
 					}
 					break;
 
 				case 'by-properties':
+					// mw.msg
+					if (Object.keys(data).some((i) => !(i in Data) && data[i] !== null)) {
+						thisDialog.panelB.$element.append(
+							'<h3>' + mw.msg('knowledgegraph-dialog-results-importing-nodes') + '</h3>'
+						);
+
+						var $newList = $('<ul>');
+						for (var i in data) {
+							if (!(i in Data) && data[i] !== null) {
+								var url = mw.config.get('wgArticlePath').replace('$1', i);
+								$newList.append(
+									$(
+										'<li><a target="_blank" href="' +
+											url +
+											'">' +
+											i +
+											'</a></li>'
+									)
+								);
+							}
+						}
+						thisDialog.panelB.$element.append($newList);
+					}
+
+					if (
+						thisDialog._skippedTitles &&
+						thisDialog._skippedTitles.length > 0
+					) {
+						thisDialog.panelB.$element.append(
+							'<h4>' + mw.msg('knowledgegraph-dialog-results-skipped-existing') + '</h4>'
+						);
+
+						var $skippedList = $('<ul>');
+						thisDialog._skippedTitles.forEach(function (title) {
+							var url = mw.config.get('wgArticlePath').replace('$1', title);
+							$skippedList.append(
+								$(
+									'<li><a target="_blank" href="' +
+										url +
+										'">' +
+										title +
+										'</a></li>'
+								)
+							);
+						});
+						thisDialog.panelB.$element.append($skippedList);
+					}
+					break;
+
 				case 'by-categories':
 					// mw.msg
 					thisDialog.panelB.$element.append(
@@ -661,7 +676,9 @@ KnowledgeGraph = function () {
 							mw.msg('knowledgegraph-dialog-results-importing-nodes') +
 							'</h3>'
 					);
-					// @TODO display a message if all nodes exist
+
+					var $el = $('<ul>');
+					var newNodesCount = 0;
 
 					for (var i in data) {
 						if (!(i in Data) && data[i] !== null) {
@@ -673,10 +690,19 @@ KnowledgeGraph = function () {
 										url +
 										'">' +
 										i +
-										'</a> </li>'
+										'</a></li>'
 								)
 							);
+							newNodesCount++;
 						}
+					}
+
+					if (newNodesCount === 0) {
+						thisDialog.panelB.$element.append(
+							$('<p>' + mw.msg('knowledgegraph-dialog-results-no-new-nodes') + '</p>')
+						);
+					} else {
+						thisDialog.panelB.$element.append($el);
 					}
 			}
 		}
@@ -718,7 +744,6 @@ KnowledgeGraph = function () {
 				break;
 
 			case 'export-graph':
-				// console.log('Data', Data);
 				var nodes = [];
 				var properties = [];
 				var propertyOptions = '';
@@ -730,14 +755,10 @@ KnowledgeGraph = function () {
 						continue;
 					}
 					for (var ii in Data[i].properties) {
-						const property = Data[i].properties[ii];
-						const label = property.canonicalLabel;
-
-						if (properties.indexOf(label) === -1) {
-							properties.push(label);
-							properties.push('-' + label);
-							propertyOptions += `|property-options?${label}=\n`;
-							propertyOptions += `|property-options?-${label}=\n`; 
+						var property = Data[i].properties[ii];
+						if (properties.indexOf(property.canonicalLabel) === -1) {
+							properties.push(property.canonicalLabel);
+							propertyOptions += `|property-options?${property.canonicalLabel}=\n`;
 						}
 					}
 				}
@@ -853,8 +874,6 @@ ${propertyOptions}|show-property-type=true
 	}
 
 	function initialize(container, containerToolbar, containerOptions, config) {
-		// console.log('config', config);
-
 		InitialData = JSON.parse(JSON.stringify(config.data));
 		Config = config;
 		Container = container;
@@ -930,8 +949,6 @@ ${propertyOptions}|show-property-type=true
 			var nodeId = params.nodes[0];
 			//  && nodeId in Data
 			if (nodeId !== undefined) {
-				// console.log('params', params);
-
 				var menuObj = {
 					items: [
 						{
@@ -1001,7 +1018,6 @@ ${propertyOptions}|show-property-type=true
 					title: params.nodes[0],
 					depth: parseInt(Config.depth),
 				}).then(function (data) {
-					// console.log('data', data);
 					createNodes(data);
 					Nodes.update([
 						{
@@ -1024,8 +1040,6 @@ ${propertyOptions}|show-property-type=true
 
 $(document).ready(async function () {
 	var semanticGraphs = JSON.parse(mw.config.get('knowledgegraphs'));
-
-	// console.log('semanticGraphs', semanticGraphs);
 
 	async function getModule(str) {
 		var module = await import(`data:text/javascript;base64,${btoa(str)}`);
@@ -1162,7 +1176,6 @@ $(document).ready(async function () {
 			container.style.height = config.height;
 		}
 
-		// console.log('config', config);
 		graph.initialize(container, containerToolbar, containerOptions, config);
 	});
 });
