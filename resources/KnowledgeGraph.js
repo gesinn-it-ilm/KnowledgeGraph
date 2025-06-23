@@ -873,6 +873,68 @@ ${propertyOptions}|show-property-type=true
 		self.setActive(false);
 	}
 
+	function fetchSemanticDataForNode(title, callback) {
+		let cleanTitle = encodeURIComponent(title.replace(/ /g, '_'));
+		mw.loader.using('mediawiki.api').then(function() {
+			new mw.Api().get({
+			action: "smwbrowse",
+			format: "json",
+			browse: "subject",
+			params: JSON.stringify({
+				subject: cleanTitle,
+				ns: 0
+			})
+			}).done(function(data) {
+			console.log('API raw response:', data);
+			if (data && data.query && data.query.data) {
+				const filtered = data.query.data.filter(item => !item.property.startsWith('_'));
+				if (filtered.length > 0) {
+					callback(filtered);
+				} else {
+					console.warn("No semantic *user* properties found for", cleanTitle, data);
+					callback([]);
+				}
+			} else {
+				console.warn("No semantic data found for", cleanTitle, data);
+				callback([]);
+			}
+			}).fail(function(err) {
+				console.error("SMW browse API failed:", err);
+				callback([]);
+			});
+		});
+	}
+
+	function parseProperties(dataArray) {
+		return dataArray.map(item => {
+			let value = '';
+
+			if (item.dataitem && item.dataitem.length > 0) {
+				if (item.dataitem[0].label) {
+					value = item.dataitem[0].label;
+				} else if (item.dataitem[0].title) {
+					value = item.dataitem[0].title;
+				} else if (typeof item.dataitem[0] === 'string') {
+					value = item.dataitem[0];
+				}
+			}
+
+			return {
+				property: item.property,
+				value: value,
+				direction: item.direction
+			};
+		});
+	}
+
+	function cleanLabel(label) {
+		if (label.startsWith('-')) {
+			label = label.substring(1);
+		}
+		label = label.replace(/\s*\([^)]*\)$/, '');
+		return label.trim();
+	}
+
 	function initialize(container, containerToolbar, containerOptions, config) {
 		InitialData = JSON.parse(JSON.stringify(config.data));
 		Config = config;
@@ -897,6 +959,10 @@ ${propertyOptions}|show-property-type=true
 		Data = {};
 		Nodes = new vis.DataSet([]);
 		Edges = new vis.DataSet([]);
+
+		debugger;
+		Config.graphOptions.interaction = Config.graphOptions.interaction || {};
+		Config.graphOptions.interaction.hover = true;
 
 		Network = new vis.Network(
 			Container,
@@ -945,45 +1011,97 @@ ${propertyOptions}|show-property-type=true
 
 		Network.on('oncontext', function (params) {
 			params.event.preventDefault();
+			// close existing custom menu if exists
+			$('.custom-menu').hide(100);
 
-			var nodeId = params.nodes[0];
-			//  && nodeId in Data
-			if (nodeId !== undefined) {
-				var menuObj = {
-					items: [
-						{
-							label: mw.msg('knowledgegraph-menu-open-article'),
-							icon: 'link',
-							onClick: function () {
-								var hashIndex = nodeId.indexOf('#');
-								var url = mw.config
-									.get('wgArticlePath')
-									.replace(
-										'$1',
-										hashIndex !== -1 ? nodeId.substring(0, hashIndex) : nodeId
-									);
-								window.open(url, '_blank').focus();
-							},
-						},
-					],
-					className: 'KnowledgeGraphPopupMenu',
-				};
+			const pointer = { x: params.pointer.DOM.x, y: params.pointer.DOM.y };
+			const nodeId = Network.getNodeAt(pointer);
 
-				if (Config['show-toolbar'] === true) {
-					menuObj.items.push({
-						label: mw.msg('knowledgegraph-menu-delete-node'),
-						icon: 'trash',
-						onClick: function () {
-							if (confirm(mw.msg('knowledgegraph-delete-node-confirm'))) {
-								deleteNode(nodeId);
-							}
-						},
-					});
-				}
-
-				PopupMenu = new ContextMenu(menuObj);
-				PopupMenu.showAt(params.event.pageX, params.event.pageY);
+			// create custom-menu if not exists
+			let $menu = $('.custom-menu');
+			if (!$menu.length) {
+				$menu = $('<ul class="custom-menu"></ul>').appendTo('body').hide().css({
+					position: 'absolute',
+					background: '#fff',
+					border: '1px solid #ccc',
+					padding: '5px',
+					listStyle: 'none',
+					zIndex: 10000,
+					maxHeight: '300px',
+					overflowY: 'auto',
+					margin: 0,
+					boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
+					cursor: 'pointer'
+				});
+			} else {
+				$menu.empty();
 			}
+
+			// right click on node should show properties and link to article
+			if (nodeId !== undefined) {
+				const hashIndex = nodeId.indexOf('#');
+				const title = hashIndex !== -1 ? nodeId.substring(0, hashIndex) : nodeId;
+				const url = mw.config.get('wgArticlePath').replace('$1', title);
+
+				const liLink = document.createElement('li');
+				liLink.classList.add('custom-menu-link-entry');
+				liLink.innerHTML = '🔗 ' + title;
+				liLink.addEventListener('click', () => window.open(url, '_blank'));
+				$menu.append(liLink);
+
+				fetchSemanticDataForNode(title, function (rawProps) {
+					const props = parseProperties(rawProps).filter(p => !p.property.startsWith('_'));
+
+					if (props.length === 0) {
+						$menu.append('<li>(No available properties)</li>');
+					} else {
+						props.forEach(p => {
+							const li = document.createElement('li');
+							li.classList.add('custom-menu-property-entry');
+							li.dataset.action = p.property.replaceAll('_', ' ');
+							const displayName = p.property.replaceAll('_', ' ') + (p.direction === 'inverse' ? ' (inverse)' : '');
+							li.innerHTML = '● ' + displayName;
+							$menu.append(li);
+						});
+					}
+
+					$('.custom-menu li.custom-menu-property-entry').click(function () {
+						const clickedProperty = $(this).data('action');
+						$('.custom-menu').hide(100);
+					});
+				});
+			}
+
+			// right click on edge should show property and type
+			else if (params.edges && params.edges.length > 0) {
+				debugger;
+				const edgeId = params.edges[0];
+				const edge = Edges.get(edgeId);
+				if (!edge || !edge.label) return;
+
+				debugger;
+				let cleanedLabel = cleanLabel(edge.label);
+    			const propertyTitle = 'Property:' + cleanedLabel.replaceAll(' ', '_');
+
+				const li = document.createElement('li');
+				const baseUrl = mw.config.get('wgServer') + mw.config.get('wgScriptPath');
+				const fullUrl = `${baseUrl}/index.php/${propertyTitle}`;
+				li.innerHTML = `🔗 <a target="_blank" href="${fullUrl}">${cleanedLabel}</a>`;
+
+				$menu.append(li);
+			}
+
+			// show the menu
+			$menu.finish().toggle(100).css({
+				top: params.event.pageY + "px",
+				left: params.event.pageX + "px",
+				display: "block"
+			});
+
+			// hide the menu when clicking outside
+			$(document).one('click', function () {
+				$menu.hide(100);
+			});
 		});
 
 		Network.on('click', function (params) {
@@ -991,14 +1109,28 @@ ${propertyOptions}|show-property-type=true
 				return;
 			}
 
-			if (SelectedNode !== params.nodes[0]) {
-				SelectedNode = params.nodes[0];
-				return;
-			}
-
-			// var excludedIds = [params.nodes[0]];
-
 			HideNodesRec(params.nodes[0]);
+		});
+
+		Network.on('hoverNode', function (params) {
+			const nodeId = params.node;
+
+			if (SelectedNode !== nodeId) {
+				SelectedNode = nodeId;
+			}
+		});
+
+		Network.on('hoverEdge', function (params) {
+			const edgeId = params.edge;
+
+			if (SelectedNode !== edgeId) {
+				SelectedNode = edgeId;
+				Network.selectEdges([edgeId]);
+			}
+		});
+
+		Network.on('blurNode', function () {
+			Network.unselectAll();
 		});
 
 		Network.on('doubleClick', function (params) {
