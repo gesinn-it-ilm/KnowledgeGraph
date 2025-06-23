@@ -27,6 +27,7 @@ KnowledgeGraph = function () {
 	var Categories = {};
 	var LegendDiv;
 	var PropIdPropLabelMap = {};
+	const nodePropertiesCache = {};
 
 	function addLegendEntry(id, label, color) {
 		if ($(LegendDiv).find('#' + id.replace(/ /g, '_')).length) {
@@ -907,21 +908,25 @@ ${propertyOptions}|show-property-type=true
 
 	function parseProperties(dataArray) {
 		return dataArray.map(item => {
-			let value = '';
+			let values = [];
+			let typeID = null;
 
 			if (item.dataitem && item.dataitem.length > 0) {
-				if (item.dataitem[0].label) {
-					value = item.dataitem[0].label;
-				} else if (item.dataitem[0].title) {
-					value = item.dataitem[0].title;
-				} else if (typeof item.dataitem[0] === 'string') {
-					value = item.dataitem[0];
-				}
+				values = item.dataitem.map(di => {
+					if (di.label) return di.label;
+					else if (di.title) return di.title;
+					else if (typeof di === 'string') return di;
+					else if (typeof di.item === 'string') return di.item;
+					else return '';
+				}).filter(v => v);
+
+				typeID = item.dataitem[0].type !== undefined ? item.dataitem[0].type : null;
 			}
 
 			return {
 				property: item.property,
-				value: value,
+				value: values,
+				typeID: typeID,
 				direction: item.direction
 			};
 		});
@@ -933,6 +938,20 @@ ${propertyOptions}|show-property-type=true
 		}
 		label = label.replace(/\s*\([^)]*\)$/, '');
 		return label.trim();
+	}
+
+	function getPropertyValueForNode(nodeId, propertyName, direction) {
+		const props = nodePropertiesCache[nodeId];
+		if (!props) return null;
+
+		const normalizedProperty = propertyName.replaceAll('_', ' ').toLowerCase();
+
+		const prop = props.find(p =>
+			p.property.replaceAll('_', ' ').toLowerCase() === normalizedProperty &&
+			p.direction === direction
+		);
+
+		return prop || null;
 	}
 
 	function initialize(container, containerToolbar, containerOptions, config) {
@@ -960,7 +979,23 @@ ${propertyOptions}|show-property-type=true
 		Nodes = new vis.DataSet([]);
 		Edges = new vis.DataSet([]);
 
-		debugger;
+		const graphModel = {
+			nodes: Nodes,
+			edges: Edges,
+
+			addNode: function(node) {
+				if (!this.nodes.get(node.id)) {
+				this.nodes.add(node);
+				}
+			},
+
+			addEdge: function(edge) {
+				if (!this.edges.get(edge.id)) {
+				this.edges.add(edge);
+				}
+			}
+		};
+
 		Config.graphOptions.interaction = Config.graphOptions.interaction || {};
 		Config.graphOptions.interaction.hover = true;
 
@@ -1011,11 +1046,16 @@ ${propertyOptions}|show-property-type=true
 
 		Network.on('oncontext', function (params) {
 			params.event.preventDefault();
-			// close existing custom menu if exists
+			// close custom menu if exists
 			$('.custom-menu').hide(100);
 
 			const pointer = { x: params.pointer.DOM.x, y: params.pointer.DOM.y };
+			const edgeId = Network.getEdgeAt(pointer);
 			const nodeId = Network.getNodeAt(pointer);
+
+			if (nodeId === undefined && edgeId === undefined) {
+				return;
+			}
 
 			// create custom-menu if not exists
 			let $menu = $('.custom-menu');
@@ -1051,6 +1091,7 @@ ${propertyOptions}|show-property-type=true
 
 				fetchSemanticDataForNode(title, function (rawProps) {
 					const props = parseProperties(rawProps).filter(p => !p.property.startsWith('_'));
+					nodePropertiesCache[title] = props;
 
 					if (props.length === 0) {
 						$menu.append('<li>(No available properties)</li>');
@@ -1059,34 +1100,86 @@ ${propertyOptions}|show-property-type=true
 							const li = document.createElement('li');
 							li.classList.add('custom-menu-property-entry');
 							li.dataset.action = p.property.replaceAll('_', ' ');
+							li.dataset.direction = p.direction; 
 							const displayName = p.property.replaceAll('_', ' ') + (p.direction === 'inverse' ? ' (inverse)' : '');
 							li.innerHTML = '● ' + displayName;
 							$menu.append(li);
 						});
 					}
-
+					// Add click handler for property entries
 					$('.custom-menu li.custom-menu-property-entry').click(function () {
 						const clickedProperty = $(this).data('action');
+						const clickedDirection = $(this).data('direction');
 						$('.custom-menu').hide(100);
+
+						const propertyData = getPropertyValueForNode(title, clickedProperty, clickedDirection);
+
+						if (propertyData && Array.isArray(propertyData.value)) {
+							$typeID = propertyData.typeID || null;
+
+							propertyData.value.forEach(valueItem => {
+								const newNodeId = valueItem.split('#')[0];
+								const newNodeLabel = valueItem.split('#')[0];
+								newNode = newNodeId.replaceAll('_', ' ');
+								newLabel = newNodeLabel.replaceAll('_', ' ');
+
+								const nodeAlreadyExists = Nodes.get(newNode);
+								const edgeId = `${title}_${newNode}_${clickedProperty}`;
+								const edgeAlreadyExists = Edges.get(edgeId);
+
+								if (nodeAlreadyExists) {
+									return;
+								}
+
+								if (!nodeAlreadyExists) {
+									const nodeConfig = {
+										id: newNode,
+										label: newLabel
+									};
+
+									if (propertyData.typeID === 9) {
+										nodeConfig.shape = 'box';
+										nodeConfig.font = { size: 30 };
+									}
+
+									graphModel.addNode(nodeConfig);
+								}
+
+								if (!edgeAlreadyExists) {
+									const edgeConfig = {
+										id: edgeId,
+										from: propertyData.direction === 'inverse' ? newNode : title,
+										to: propertyData.direction === 'inverse' ? title : newNode,
+										label: propertyData.direction === 'inverse' ? "-" + clickedProperty : clickedProperty,
+									};
+
+									if (propertyData.typeID === 9) {
+										edgeConfig.arrows = { to: { enabled: true } };
+									}
+
+									graphModel.addEdge(edgeConfig);
+								}
+							});
+						}
 					});
 				});
 			}
 
 			// right click on edge should show property and type
 			else if (params.edges && params.edges.length > 0) {
-				debugger;
 				const edgeId = params.edges[0];
 				const edge = Edges.get(edgeId);
 				if (!edge || !edge.label) return;
 
-				debugger;
 				let cleanedLabel = cleanLabel(edge.label);
     			const propertyTitle = 'Property:' + cleanedLabel.replaceAll(' ', '_');
 
 				const li = document.createElement('li');
 				const baseUrl = mw.config.get('wgServer') + mw.config.get('wgScriptPath');
 				const fullUrl = `${baseUrl}/index.php/${propertyTitle}`;
-				li.innerHTML = `🔗 <a target="_blank" href="${fullUrl}">${cleanedLabel}</a>`;
+				li.classList.add('custom-menu-edge-entry');
+				li.innerHTML = '🔗 ' + cleanedLabel;
+				li.addEventListener('click', () => window.open(fullUrl, '_blank'));
 
 				$menu.append(li);
 			}
@@ -1130,6 +1223,11 @@ ${propertyOptions}|show-property-type=true
 		});
 
 		Network.on('blurNode', function () {
+			Network.unselectAll();
+		});
+
+		Network.on('blurEdge', function (params) {
+			SelectedNode = null;
 			Network.unselectAll();
 		});
 
