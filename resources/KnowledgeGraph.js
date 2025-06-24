@@ -1195,8 +1195,6 @@ ${propertyOptions}|show-property-type=true
 									graphModel.addNode(nodeConfig);
 								}
 
-								debugger;
-
 								let fromNode = propertyData.direction === 'inverse' ? nodeId : title;
 								let toNode = propertyData.direction === 'inverse' ? title : nodeId;
 								let edgeLabel = propertyData.direction === 'inverse' ? "-" + clickedProperty : clickedProperty;
