@@ -207,7 +207,7 @@ KnowledgeGraph = function () {
 		return panel.$element.get(0);
 	}
 
-	function addArticleNode(data, label, options) {
+	function addArticleNode(data, label, options, typeID) {
 		if (Nodes.get(label) !== null) {
 			return;
 		}
@@ -223,6 +223,7 @@ KnowledgeGraph = function () {
 						: label.substring(0, maxPropValueLength) + '…',
 				shape: 'box',
 				font: { size: 30 },
+				typeID: typeID || 9,
 
 				// https://visjs.github.io/vis-network/examples/network/other/popups.html
 				// title: createHTMLTitle(label),
@@ -364,32 +365,38 @@ KnowledgeGraph = function () {
 								options.image = property.values[ii].src;
 							}
 
-							addArticleNode(data, targetLabel, options);
+							addArticleNode(data, targetLabel, options, 9);
 						}
 						break;
 
 					default:
-						var valueId = `${i}#${KnowledgeGraphFunctions.uuidv4()}`;
-						PropIdPropLabelMap[legendLabel].push(valueId);
+						var targetLabel = '';
+						for (var ii in property.values) {
+							targetLabel = property.values[ii].value;
 
-						Edges.add({
-							from: label,
-							to: valueId,
-							label: propLabel,
-							group: label,
-						});
+							var valueId = `${targetLabel}#${KnowledgeGraphFunctions.uuidv4()}`;
+							PropIdPropLabelMap[legendLabel].push(valueId);
 
-						var propValue = property.values.map((x) => x.value).join(', ');
+							Edges.add({
+								from: label,
+								to: valueId,
+								label: propLabel,
+								group: label,
+							});
 
-						Nodes.add(
-							jQuery.extend(options, {
-								id: valueId,
-								label:
-									propValue.length <= maxPropValueLength
-										? propValue
-										: propValue.substring(0, maxPropValueLength) + '…',
-							})
-						);
+							var propValue = property.values.map((x) => x.value).join(', ');
+
+							Nodes.add(
+								jQuery.extend(options, {
+									id: valueId,
+									label:
+										propValue.length <= maxPropValueLength
+											? propValue
+											: propValue.substring(0, maxPropValueLength) + '…',
+									typeID: property.typeId === '_txt' ? 2 : property.typeId,
+								})
+							);
+						}
 				}
 			}
 		}
@@ -875,7 +882,11 @@ ${propertyOptions}|show-property-type=true
 	}
 
 	function fetchSemanticDataForNode(title, callback) {
-		let cleanTitle = encodeURIComponent(title.replace(/ /g, '_'));
+		let cleanTitle = title.split('_')[0];
+		let type = title.split('_')[1];
+		if (type === '2') {
+			cleanTitle = title;
+		}	
 		mw.loader.using('mediawiki.api').then(function() {
 			new mw.Api().get({
 			action: "smwbrowse",
@@ -952,6 +963,33 @@ ${propertyOptions}|show-property-type=true
 		);
 
 		return prop || null;
+	}
+
+	function normalizeLabel(label) {
+		let cleanLabel = label.startsWith('-') ? label.slice(1) : label;
+		
+		const parenIndex = cleanLabel.indexOf('(');
+		if (parenIndex !== -1) {
+			cleanLabel = cleanLabel.substring(0, parenIndex).trim();
+		}
+
+		return cleanLabel;
+	}
+
+	function edgeExistsTest(nodeA, nodeB, label) {
+		const normalizedLabel = normalizeLabel(label);
+
+		return Edges.get().some(e => {
+			const eNormalizedLabel = normalizeLabel(e.label);
+
+			const sameNodes = 
+				(e.from === nodeA && e.to === nodeB) ||
+				(e.from === nodeB && e.to === nodeA);
+
+			const sameLabel = eNormalizedLabel === normalizedLabel;
+
+			return sameNodes && sameLabel;
+		});
 	}
 
 	function initialize(container, containerToolbar, containerOptions, config) {
@@ -1047,7 +1085,7 @@ ${propertyOptions}|show-property-type=true
 		Network.on('oncontext', function (params) {
 			params.event.preventDefault();
 			// close custom menu if exists
-			$('.custom-menu').hide(100);
+			$('.custom-menu').hide();
 
 			const pointer = { x: params.pointer.DOM.x, y: params.pointer.DOM.y };
 			const edgeId = Network.getEdgeAt(pointer);
@@ -1079,62 +1117,74 @@ ${propertyOptions}|show-property-type=true
 
 			// right click on node should show properties and link to article
 			if (nodeId !== undefined) {
-				const hashIndex = nodeId.indexOf('#');
-				const title = hashIndex !== -1 ? nodeId.substring(0, hashIndex) : nodeId;
-				const url = mw.config.get('wgArticlePath').replace('$1', title);
+				let hashIndex = nodeId.indexOf('#');
+				let titleLabel = nodeId.split('_')[0];
+				let hashIndexTitle = titleLabel.indexOf('#');
+				if (hashIndexTitle !== -1) {
+					titleLabel = titleLabel.substring(0, hashIndexTitle);
+				}
+				let title = hashIndex !== -1 ? nodeId.substring(0, hashIndex) : nodeId;
+				let url = mw.config.get('wgArticlePath').replace('$1', titleLabel);
 
-				const liLink = document.createElement('li');
+				let liLink = document.createElement('li');
 				liLink.classList.add('custom-menu-link-entry');
-				liLink.innerHTML = '🔗 ' + title;
+				liLink.innerHTML = '🔗 ' + titleLabel;
 				liLink.addEventListener('click', () => window.open(url, '_blank'));
 				$menu.append(liLink);
 
 				fetchSemanticDataForNode(title, function (rawProps) {
-					const props = parseProperties(rawProps).filter(p => !p.property.startsWith('_'));
+					let props = parseProperties(rawProps).filter(p => !p.property.startsWith('_'));
 					nodePropertiesCache[title] = props;
 
 					if (props.length === 0) {
 						$menu.append('<li>(No available properties)</li>');
 					} else {
 						props.forEach(p => {
-							const li = document.createElement('li');
+							let li = document.createElement('li');
 							li.classList.add('custom-menu-property-entry');
 							li.dataset.action = p.property.replaceAll('_', ' ');
 							li.dataset.direction = p.direction; 
-							const displayName = p.property.replaceAll('_', ' ') + (p.direction === 'inverse' ? ' (inverse)' : '');
+							let displayName = p.property.replaceAll('_', ' ') + (p.direction === 'inverse' ? ' (inverse)' : '');
 							li.innerHTML = '● ' + displayName;
 							$menu.append(li);
 						});
 					}
-					// Add click handler for property entries
+					// Add click handler for property entries to create nodes and edges
 					$('.custom-menu li.custom-menu-property-entry').click(function () {
-						const clickedProperty = $(this).data('action');
-						const clickedDirection = $(this).data('direction');
-						$('.custom-menu').hide(100);
+						
+						let clickedProperty = $(this).data('action');
+						let clickedDirection = $(this).data('direction');
+						$('.custom-menu').hide();
 
-						const propertyData = getPropertyValueForNode(title, clickedProperty, clickedDirection);
+						let propertyData = getPropertyValueForNode(title, clickedProperty, clickedDirection);
 
 						if (propertyData && Array.isArray(propertyData.value)) {
-							$typeID = propertyData.typeID || null;
+							typeID = propertyData.typeID || null;
+
+							if (!(clickedProperty in PropColors)) {
+								let color_;
+								do {
+									color_ = KnowledgeGraphFunctions.randomHSL();
+								} while (Object.values(PropColors).includes(color_));
+								PropColors[clickedProperty] = color_;
+							}
+							let nodeColor = PropColors[clickedProperty];
 
 							propertyData.value.forEach(valueItem => {
-								const newNodeId = valueItem.split('#')[0];
-								const newNodeLabel = valueItem.split('#')[0];
+								let newNodeId = valueItem.split('#')[0];
+								let newNodeLabel = valueItem.split('#')[0];
 								newNode = newNodeId.replaceAll('_', ' ');
 								newLabel = newNodeLabel.replaceAll('_', ' ');
-
-								const nodeAlreadyExists = Nodes.get(newNode);
-								const edgeId = `${title}_${newNode}_${clickedProperty}`;
-								const edgeAlreadyExists = Edges.get(edgeId);
-
-								if (nodeAlreadyExists) {
-									return;
-								}
+			
+								let nodeId = `${newLabel}_${typeID}`;
+								let nodeAlreadyExists = Nodes.get().some(n => n.label === newLabel && n.typeID === propertyData.typeID);
 
 								if (!nodeAlreadyExists) {
-									const nodeConfig = {
-										id: newNode,
-										label: newLabel
+									let nodeConfig = {
+										id: nodeId,
+										label: newLabel,
+										typeID: propertyData.typeID,
+										color: nodeColor,
 									};
 
 									if (propertyData.typeID === 9) {
@@ -1145,12 +1195,27 @@ ${propertyOptions}|show-property-type=true
 									graphModel.addNode(nodeConfig);
 								}
 
+								debugger;
+
+								let fromNode = propertyData.direction === 'inverse' ? nodeId : title;
+								let toNode = propertyData.direction === 'inverse' ? title : nodeId;
+								let edgeLabel = propertyData.direction === 'inverse' ? "-" + clickedProperty : clickedProperty;
+								let edgeId = `${fromNode}_${toNode}_${edgeLabel}`;
+
+								let edgeAlreadyExists = edgeExistsTest(fromNode, toNode, edgeLabel);
+
+								// if (Config['show-property-type']) {
+								// 	if (!edgeLabel.endsWith(`(${propertyData.typeLabel})`)) {
+								// 		edgeLabel = `${edgeLabel} (${propertyData.typeLabel})`;
+								// 	}
+								// }
+
 								if (!edgeAlreadyExists) {
-									const edgeConfig = {
+									let edgeConfig = {
 										id: edgeId,
-										from: propertyData.direction === 'inverse' ? newNode : title,
-										to: propertyData.direction === 'inverse' ? title : newNode,
-										label: propertyData.direction === 'inverse' ? "-" + clickedProperty : clickedProperty,
+										from: fromNode,
+										to: toNode,
+										label: edgeLabel,
 									};
 
 									if (propertyData.typeID === 9) {
@@ -1167,16 +1232,16 @@ ${propertyOptions}|show-property-type=true
 
 			// right click on edge should show property and type
 			else if (params.edges && params.edges.length > 0) {
-				const edgeId = params.edges[0];
-				const edge = Edges.get(edgeId);
+				let edgeId = params.edges[0];
+				let edge = Edges.get(edgeId);
 				if (!edge || !edge.label) return;
 
 				let cleanedLabel = cleanLabel(edge.label);
-    			const propertyTitle = 'Property:' + cleanedLabel.replaceAll(' ', '_');
+    			let propertyTitle = 'Property:' + cleanedLabel.replaceAll(' ', '_');
 
-				const li = document.createElement('li');
-				const baseUrl = mw.config.get('wgServer') + mw.config.get('wgScriptPath');
-				const fullUrl = `${baseUrl}/index.php/${propertyTitle}`;
+				let li = document.createElement('li');
+				let baseUrl = mw.config.get('wgServer') + mw.config.get('wgScriptPath');
+				let fullUrl = `${baseUrl}/index.php/${propertyTitle}`;
 				li.classList.add('custom-menu-edge-entry');
 				li.innerHTML = '🔗 ' + cleanedLabel;
 				li.addEventListener('click', () => window.open(fullUrl, '_blank'));
@@ -1193,7 +1258,7 @@ ${propertyOptions}|show-property-type=true
 
 			// hide the menu when clicking outside
 			$(document).one('click', function () {
-				$menu.hide(100);
+				$menu.hide();
 			});
 		});
 
@@ -1235,13 +1300,6 @@ ${propertyOptions}|show-property-type=true
 			if (!params.nodes.length) {
 				return;
 			}
-			var nodeId = params.nodes[0];
-			var node = Nodes.get(nodeId);
-			var wikiBaseUrl = mw.config.get('wgArticlePath').replace('$1', '');
-
-			// open clicked node in new tab
-			var pageUrl = (node && node.url) ? node.url : wikiBaseUrl + encodeURIComponent(nodeId);
-			window.open(pageUrl, '_blank');
 
 			if (!(nodeId in Data) || Data[nodeId] === null) {
 				loadNodes({
