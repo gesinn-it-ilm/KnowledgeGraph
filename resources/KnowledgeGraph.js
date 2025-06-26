@@ -969,14 +969,16 @@ ${propertyOptions}|show-property-type=true
 						if (propertyData && Array.isArray(propertyData.value)) {
 							typeID = propertyData.typeID || null;
 
-							if (!(clickedProperty in PropColors)) {
+							// Create property key based on direction
+							let propKey = clickedDirection === 'inverse' ? `-${clickedProperty}` : clickedProperty;
+							if (!(propKey in PropColors)) {
 								let color_;
 								do {
 									color_ = KnowledgeGraphFunctions.randomHSL();
 								} while (Object.values(PropColors).includes(color_));
-								PropColors[clickedProperty] = color_;
+								PropColors[propKey] = color_;
 							}
-							let nodeColor = PropColors[clickedProperty];
+							let nodeColor = PropColors[propKey];
 
 							// when node is clicked, update Data object
 							let currentNodeId = title.includes('_') ? title : `${title}_${propertyData.typeID}`;
@@ -986,9 +988,6 @@ ${propertyOptions}|show-property-type=true
 									properties: []
 								};
 							}
-
-							// Create property key based on direction
-							let propKey = clickedDirection === 'inverse' ? `-${clickedProperty}` : clickedProperty;
 
 							// If property does not exist, create it and add to Data
 							if (!Data[dataKey].properties[propKey]) {
