@@ -960,7 +960,6 @@ ${propertyOptions}|show-property-type=true
 					}
 					// Add click handler for property entries to create nodes and edges
 					$('.custom-menu li.custom-menu-property-entry').click(function () {
-						
 						let clickedProperty = $(this).data('action');
 						let clickedDirection = $(this).data('direction');
 						$('.custom-menu').hide();
@@ -978,6 +977,26 @@ ${propertyOptions}|show-property-type=true
 								PropColors[clickedProperty] = color_;
 							}
 							let nodeColor = PropColors[clickedProperty];
+
+							// when node is clicked, update Data object
+							let currentNodeId = title.includes('_') ? title : `${title}_${propertyData.typeID}`;
+							let dataKey = currentNodeId.split('_')[0];
+							if (!Data[dataKey]) {
+								Data[dataKey] = {
+									properties: []
+								};
+							}
+
+							// Create property key based on direction
+							let propKey = clickedDirection === 'inverse' ? `-${clickedProperty}` : clickedProperty;
+
+							// If property does not exist, create it and add to Data
+							if (!Data[dataKey].properties[propKey]) {
+								Data[dataKey].properties[propKey] = {
+									key: propKey,
+									canonicalLabel: propKey,
+								};
+							}
 
 							propertyData.value.forEach(valueItem => {
 								let newNodeId = valueItem.split('#')[0];
@@ -999,6 +1018,12 @@ ${propertyOptions}|show-property-type=true
 									if (propertyData.typeID === 9) {
 										nodeConfig.shape = 'box';
 										nodeConfig.font = { size: 30 };
+										if (!Data[nodeId]) {
+											let dataKey = nodeId.split('_')[0];
+											Data[dataKey] = {
+												properties: []
+											};
+										}
 									}
 
 									graphModel.addNode(nodeConfig);
