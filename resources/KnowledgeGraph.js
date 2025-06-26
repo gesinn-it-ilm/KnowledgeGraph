@@ -27,7 +27,7 @@ KnowledgeGraph = function () {
 	var Categories = {};
 	var LegendDiv;
 	var PropIdPropLabelMap = {};
-	const nodePropertiesCache = {};
+	var nodePropertiesCache = {};
 
 	function addLegendEntry(id, label, color) {
 		if ($(LegendDiv).find('#' + id.replace(/ /g, '_')).length) {
@@ -815,16 +815,25 @@ ${propertyOptions}|show-property-type=true
 
 			case 'reload':
 				if (confirm(mw.msg('knowledgegraph-toolbar-reset-network-confirm'))) {
+					if (Network) {
+						Network.destroy();
+					}
+
 					Data = {};
 					Nodes = new vis.DataSet([]);
 					Edges = new vis.DataSet([]);
 
-					Network.setData({ nodes: Nodes, edges: Edges });
+					graphModel = {
+						nodes: Nodes,
+						edges: Edges,
+						addNode: function(node) { if (!this.nodes.get(node.id)) this.nodes.add(node); },
+						addEdge: function(edge) { if (!this.edges.get(edge.id)) this.edges.add(edge); }
+					};
+
+					Network = new vis.Network(Container, { nodes: Nodes, edges: Edges }, Config.graphOptions);
 
 					createNodes(InitialData);
-
-					// Network.destroy();
-					// initializeNetwork(InitialData);
+					attachContextMenuListener();
 				}
 		}
 
@@ -881,207 +890,7 @@ ${propertyOptions}|show-property-type=true
 		self.setActive(false);
 	}
 
-	function fetchSemanticDataForNode(title, callback) {
-		let cleanTitle = title.split('_')[0];
-		let type = title.split('_')[1];
-		if (type === '2') {
-			cleanTitle = title;
-		}	
-		mw.loader.using('mediawiki.api').then(function() {
-			new mw.Api().get({
-			action: "smwbrowse",
-			format: "json",
-			browse: "subject",
-			params: JSON.stringify({
-				subject: cleanTitle,
-				ns: 0
-			})
-			}).done(function(data) {
-			console.log('API raw response:', data);
-			if (data && data.query && data.query.data) {
-				const filtered = data.query.data.filter(item => !item.property.startsWith('_'));
-				if (filtered.length > 0) {
-					callback(filtered);
-				} else {
-					console.warn("No semantic *user* properties found for", cleanTitle, data);
-					callback([]);
-				}
-			} else {
-				console.warn("No semantic data found for", cleanTitle, data);
-				callback([]);
-			}
-			}).fail(function(err) {
-				console.error("SMW browse API failed:", err);
-				callback([]);
-			});
-		});
-	}
-
-	function parseProperties(dataArray) {
-		return dataArray.map(item => {
-			let values = [];
-			let typeID = null;
-
-			if (item.dataitem && item.dataitem.length > 0) {
-				values = item.dataitem.map(di => {
-					if (di.label) return di.label;
-					else if (di.title) return di.title;
-					else if (typeof di === 'string') return di;
-					else if (typeof di.item === 'string') return di.item;
-					else return '';
-				}).filter(v => v);
-
-				typeID = item.dataitem[0].type !== undefined ? item.dataitem[0].type : null;
-			}
-
-			return {
-				property: item.property,
-				value: values,
-				typeID: typeID,
-				direction: item.direction
-			};
-		});
-	}
-
-	function cleanLabel(label) {
-		if (label.startsWith('-')) {
-			label = label.substring(1);
-		}
-		label = label.replace(/\s*\([^)]*\)$/, '');
-		return label.trim();
-	}
-
-	function getPropertyValueForNode(nodeId, propertyName, direction) {
-		const props = nodePropertiesCache[nodeId];
-		if (!props) return null;
-
-		const normalizedProperty = propertyName.replaceAll('_', ' ').toLowerCase();
-
-		const prop = props.find(p =>
-			p.property.replaceAll('_', ' ').toLowerCase() === normalizedProperty &&
-			p.direction === direction
-		);
-
-		return prop || null;
-	}
-
-	function normalizeLabel(label) {
-		let cleanLabel = label.startsWith('-') ? label.slice(1) : label;
-		
-		const parenIndex = cleanLabel.indexOf('(');
-		if (parenIndex !== -1) {
-			cleanLabel = cleanLabel.substring(0, parenIndex).trim();
-		}
-
-		return cleanLabel;
-	}
-
-	function edgeExistsTest(nodeA, nodeB, label) {
-		const normalizedLabel = normalizeLabel(label);
-
-		return Edges.get().some(e => {
-			const eNormalizedLabel = normalizeLabel(e.label);
-
-			const sameNodes = 
-				(e.from === nodeA && e.to === nodeB) ||
-				(e.from === nodeB && e.to === nodeA);
-
-			const sameLabel = eNormalizedLabel === normalizedLabel;
-
-			return sameNodes && sameLabel;
-		});
-	}
-
-	function initialize(container, containerToolbar, containerOptions, config) {
-		InitialData = JSON.parse(JSON.stringify(config.data));
-		Config = config;
-		Container = container;
-		ContainerOptions = containerOptions;
-
-		// $(container).width(config.width);
-		// $(container).height(config.width);
-
-		if (config['show-toolbar']) {
-			var toolbar = KnowledgeGraphToolbar.create(getOnSelectToolbar);
-			// toolbar.$element.insertBefore(container);
-
-			var actionToolbar = KnowledgeGraphActionToolbar.create(
-				getOnSelectActionToolbar
-			);
-			toolbar.$actions.append(actionToolbar.$element);
-			toolbar.$element.appendTo(containerToolbar);
-			$(ContainerOptions).toggle(false);
-		}
-
-		Data = {};
-		Nodes = new vis.DataSet([]);
-		Edges = new vis.DataSet([]);
-
-		const graphModel = {
-			nodes: Nodes,
-			edges: Edges,
-
-			addNode: function(node) {
-				if (!this.nodes.get(node.id)) {
-				this.nodes.add(node);
-				}
-			},
-
-			addEdge: function(edge) {
-				if (!this.edges.get(edge.id)) {
-				this.edges.add(edge);
-				}
-			}
-		};
-
-		Config.graphOptions.interaction = Config.graphOptions.interaction || {};
-		Config.graphOptions.interaction.hover = true;
-
-		Network = new vis.Network(
-			Container,
-			{ nodes: Nodes, edges: Edges },
-			Config.graphOptions
-		);
-
-		if (config['show-toolbar']) {
-			Config.graphOptions.configure.enabled = false;
-
-			var messageWidget = new OO.ui.MessageWidget({
-				type: 'info',
-				label: new OO.ui.HtmlSnippet(
-					mw.msg(
-						'knowledgegraph-graph-options-message',
-						mw.config
-							.get('wgArticlePath')
-							.replace('$1', 'MediaWiki:KnowledgeGraphOptions')
-					)
-				),
-				invisibleLabel: false,
-				// classes:
-			});
-
-			$(containerOptions)
-				.find('.vis-configuration.vis-config-option-container')
-				.prepend(messageWidget.$element);
-		}
-
-		if (Config['properties-panel']) {
-			LegendDiv = document.createElement('div');
-
-			LegendDiv.style.position = 'relative';
-			LegendDiv.id = 'legendContainer';
-			// var legendColors = {};
-			container.parentElement.append(LegendDiv);
-			// *** attention!! this generates absolute values
-			// when used in conjunction with Chameleon !!
-			// $(LegendDiv).width(Config.width);
-			// $(LegendDiv).height(Config.height);
-			LegendDiv.style.width = Config.width;
-			LegendDiv.style.height = Config.height;
-		}
-
-		createNodes(Config.data);
-
+	function attachContextMenuListener() {
 		Network.on('oncontext', function (params) {
 			params.event.preventDefault();
 			// close custom menu if exists
@@ -1259,6 +1068,209 @@ ${propertyOptions}|show-property-type=true
 				$menu.hide();
 			});
 		});
+	}
+
+	function fetchSemanticDataForNode(title, callback) {
+		let cleanTitle = title.split('_')[0];
+		let type = title.split('_')[1];
+		if (type === '2') {
+			cleanTitle = title;
+		}	
+		mw.loader.using('mediawiki.api').then(function() {
+			new mw.Api().get({
+			action: "smwbrowse",
+			format: "json",
+			browse: "subject",
+			params: JSON.stringify({
+				subject: cleanTitle,
+				ns: 0
+			})
+			}).done(function(data) {
+			console.log('API raw response:', data);
+			if (data && data.query && data.query.data) {
+				const filtered = data.query.data.filter(item => !item.property.startsWith('_'));
+				if (filtered.length > 0) {
+					callback(filtered);
+				} else {
+					console.warn("No semantic *user* properties found for", cleanTitle, data);
+					callback([]);
+				}
+			} else {
+				console.warn("No semantic data found for", cleanTitle, data);
+				callback([]);
+			}
+			}).fail(function(err) {
+				console.error("SMW browse API failed:", err);
+				callback([]);
+			});
+		});
+	}
+
+	function parseProperties(dataArray) {
+		return dataArray.map(item => {
+			let values = [];
+			let typeID = null;
+
+			if (item.dataitem && item.dataitem.length > 0) {
+				values = item.dataitem.map(di => {
+					if (di.label) return di.label;
+					else if (di.title) return di.title;
+					else if (typeof di === 'string') return di;
+					else if (typeof di.item === 'string') return di.item;
+					else return '';
+				}).filter(v => v);
+
+				typeID = item.dataitem[0].type !== undefined ? item.dataitem[0].type : null;
+			}
+
+			return {
+				property: item.property,
+				value: values,
+				typeID: typeID,
+				direction: item.direction
+			};
+		});
+	}
+
+	function cleanLabel(label) {
+		if (label.startsWith('-')) {
+			label = label.substring(1);
+		}
+		label = label.replace(/\s*\([^)]*\)$/, '');
+		return label.trim();
+	}
+
+	function getPropertyValueForNode(nodeId, propertyName, direction) {
+		const props = nodePropertiesCache[nodeId];
+		if (!props) return null;
+
+		const normalizedProperty = propertyName.replaceAll('_', ' ').toLowerCase();
+
+		const prop = props.find(p =>
+			p.property.replaceAll('_', ' ').toLowerCase() === normalizedProperty &&
+			p.direction === direction
+		);
+
+		return prop || null;
+	}
+
+	function normalizeLabel(label) {
+		let cleanLabel = label.startsWith('-') ? label.slice(1) : label;
+		
+		const parenIndex = cleanLabel.indexOf('(');
+		if (parenIndex !== -1) {
+			cleanLabel = cleanLabel.substring(0, parenIndex).trim();
+		}
+
+		return cleanLabel;
+	}
+
+	function edgeExistsTest(nodeA, nodeB, label) {
+		const normalizedLabel = normalizeLabel(label);
+
+		return Edges.get().some(e => {
+			const eNormalizedLabel = normalizeLabel(e.label);
+
+			const sameNodes = 
+				(e.from === nodeA && e.to === nodeB) ||
+				(e.from === nodeB && e.to === nodeA);
+
+			const sameLabel = eNormalizedLabel === normalizedLabel;
+
+			return sameNodes && sameLabel;
+		});
+	}
+
+	function initialize(container, containerToolbar, containerOptions, config) {
+		InitialData = JSON.parse(JSON.stringify(config.data));
+		Config = config;
+		Container = container;
+		ContainerOptions = containerOptions;
+
+		// $(container).width(config.width);
+		// $(container).height(config.width);
+
+		if (config['show-toolbar']) {
+			var toolbar = KnowledgeGraphToolbar.create(getOnSelectToolbar);
+			// toolbar.$element.insertBefore(container);
+
+			var actionToolbar = KnowledgeGraphActionToolbar.create(
+				getOnSelectActionToolbar
+			);
+			toolbar.$actions.append(actionToolbar.$element);
+			toolbar.$element.appendTo(containerToolbar);
+			$(ContainerOptions).toggle(false);
+		}
+
+		Data = {};
+		Nodes = new vis.DataSet([]);
+		Edges = new vis.DataSet([]);
+
+		graphModel = {
+			nodes: Nodes,
+			edges: Edges,
+
+			addNode: function(node) {
+				if (!this.nodes.get(node.id)) {
+				this.nodes.add(node);
+				}
+			},
+
+			addEdge: function(edge) {
+				if (!this.edges.get(edge.id)) {
+				this.edges.add(edge);
+				}
+			}
+		};
+
+		Config.graphOptions.interaction = Config.graphOptions.interaction || {};
+		Config.graphOptions.interaction.hover = true;
+
+		Network = new vis.Network(
+			Container,
+			{ nodes: Nodes, edges: Edges },
+			Config.graphOptions
+		);
+
+		if (config['show-toolbar']) {
+			Config.graphOptions.configure.enabled = false;
+
+			var messageWidget = new OO.ui.MessageWidget({
+				type: 'info',
+				label: new OO.ui.HtmlSnippet(
+					mw.msg(
+						'knowledgegraph-graph-options-message',
+						mw.config
+							.get('wgArticlePath')
+							.replace('$1', 'MediaWiki:KnowledgeGraphOptions')
+					)
+				),
+				invisibleLabel: false,
+				// classes:
+			});
+
+			$(containerOptions)
+				.find('.vis-configuration.vis-config-option-container')
+				.prepend(messageWidget.$element);
+		}
+
+		if (Config['properties-panel']) {
+			LegendDiv = document.createElement('div');
+
+			LegendDiv.style.position = 'relative';
+			LegendDiv.id = 'legendContainer';
+			// var legendColors = {};
+			container.parentElement.append(LegendDiv);
+			// *** attention!! this generates absolute values
+			// when used in conjunction with Chameleon !!
+			// $(LegendDiv).width(Config.width);
+			// $(LegendDiv).height(Config.height);
+			LegendDiv.style.width = Config.width;
+			LegendDiv.style.height = Config.height;
+		}
+
+		createNodes(Config.data);
+		attachContextMenuListener();
 
 		Network.on('click', function (params) {
 			if (!params.nodes.length) {
