@@ -131,6 +131,9 @@ KnowledgeGraph = function () {
 				properties: JSON.stringify(Config['properties']),
 			};
 		} else if (obj.properties !== null) {
+			if (obj.properties === undefined) {
+				obj.properties = [];
+			}
 			var payload = {
 				action: 'knowledgegraph-load-properties',
 				properties: obj.properties.join('|'),
@@ -890,6 +893,23 @@ ${propertyOptions}|show-property-type=true
 		self.setActive(false);
 	}
 
+	function removeNodeAndDescendants(nodeId) {
+		const outgoingEdges = Edges.get().filter(e => e.from === nodeId);
+
+		outgoingEdges.forEach(edge => {
+			const childNodeId = edge.to;
+			Edges.remove(edge.id);
+
+			const otherIncomingEdges = Edges.get().filter(e => e.to === childNodeId);
+			if (otherIncomingEdges.length === 0) {
+				removeNodeAndDescendants(childNodeId);
+			}
+		});
+
+		Nodes.remove(nodeId);
+		delete Data[nodeId];
+	}
+
 	function attachContextMenuListener() {
 		Network.on('oncontext', function (params) {
 			params.event.preventDefault();
@@ -1000,33 +1020,11 @@ ${propertyOptions}|show-property-type=true
 							propertyData.value.forEach(valueItem => {
 								let newNodeId = valueItem.split('#')[0];
 								let newNodeLabel = valueItem.split('#')[0];
-								newNode = newNodeId.replaceAll('_', ' ');
-								newLabel = newNodeLabel.replaceAll('_', ' ');
-			
+
+								let newLabel = newNodeLabel.replaceAll('_', ' ');
 								let nodeId = `${newLabel}_${typeID}`;
+
 								let nodeAlreadyExists = Nodes.get().some(n => n.label === newLabel && n.typeID === propertyData.typeID);
-
-								if (!nodeAlreadyExists) {
-									let nodeConfig = {
-										id: nodeId,
-										label: newLabel,
-										typeID: propertyData.typeID,
-										color: nodeColor,
-									};
-
-									if (propertyData.typeID === 9) {
-										nodeConfig.shape = 'box';
-										nodeConfig.font = { size: 30 };
-										if (!Data[nodeId]) {
-											let dataKey = nodeId.split('_')[0];
-											Data[dataKey] = {
-												properties: []
-											};
-										}
-									}
-
-									graphModel.addNode(nodeConfig);
-								}
 
 								let fromNode = propertyData.direction === 'inverse' ? nodeId : title;
 								let toNode = propertyData.direction === 'inverse' ? title : nodeId;
@@ -1035,25 +1033,53 @@ ${propertyOptions}|show-property-type=true
 
 								let edgeAlreadyExists = edgeExistsTest(fromNode, toNode, edgeLabel);
 
-								// if (Config['show-property-type']) {
-								// 	if (!edgeLabel.endsWith(`(${propertyData.typeLabel})`)) {
-								// 		edgeLabel = `${edgeLabel} (${propertyData.typeLabel})`;
-								// 	}
-								// }
+								if (nodeAlreadyExists && edgeAlreadyExists) {
+									Edges.remove(edgeId);
+									// check if node has any incoming edges left
+									const incomingEdges = Edges.get().filter(e => e.to === nodeId);
 
-								if (!edgeAlreadyExists) {
-									let edgeConfig = {
-										id: edgeId,
-										from: fromNode,
-										to: toNode,
-										label: edgeLabel,
-									};
+									if (incomingEdges.length === 0) {
+										// no incoming edges left, remove node and its descendants
+										removeNodeAndDescendants(nodeId);
+									}
+								} else {
+									if (!nodeAlreadyExists) {
+										let nodeConfig = {
+											id: nodeId,
+											label: newLabel,
+											typeID: propertyData.typeID,
+											color: nodeColor,
+										};
 
-									if (propertyData.typeID === 9) {
-										edgeConfig.arrows = { to: { enabled: true } };
+										if (propertyData.typeID === 9) {
+											nodeConfig.shape = 'box';
+											nodeConfig.font = { size: 30 };
+
+											if (!Data[nodeId]) {
+												let dataKey = nodeId.split('_')[0];
+												Data[dataKey] = {
+													properties: []
+												};
+											}
+										}
+
+										graphModel.addNode(nodeConfig);
 									}
 
-									graphModel.addEdge(edgeConfig);
+									if (!edgeAlreadyExists) {
+										let edgeConfig = {
+											id: edgeId,
+											from: fromNode,
+											to: toNode,
+											label: edgeLabel,
+										};
+
+										if (propertyData.typeID === 9) {
+											edgeConfig.arrows = { to: { enabled: true } };
+										}
+
+										graphModel.addEdge(edgeConfig);
+									}
 								}
 							});
 						}
@@ -1110,19 +1136,18 @@ ${propertyOptions}|show-property-type=true
 				ns: 0
 			})
 			}).done(function(data) {
-			console.log('API raw response:', data);
-			if (data && data.query && data.query.data) {
-				const filtered = data.query.data.filter(item => !item.property.startsWith('_'));
-				if (filtered.length > 0) {
-					callback(filtered);
+				if (data && data.query && data.query.data) {
+					const filtered = data.query.data.filter(item => !item.property.startsWith('_'));
+					if (filtered.length > 0) {
+						callback(filtered);
+					} else {
+						console.warn("No semantic *user* properties found for", cleanTitle, data);
+						callback([]);
+					}
 				} else {
-					console.warn("No semantic *user* properties found for", cleanTitle, data);
+					console.warn("No semantic data found for", cleanTitle, data);
 					callback([]);
 				}
-			} else {
-				console.warn("No semantic data found for", cleanTitle, data);
-				callback([]);
-			}
 			}).fail(function(err) {
 				console.error("SMW browse API failed:", err);
 				callback([]);
@@ -1335,22 +1360,20 @@ ${propertyOptions}|show-property-type=true
 				return;
 			}
 
-			if (!(nodeId in Data) || Data[nodeId] === null) {
-				loadNodes({
-					title: params.nodes[0],
-					depth: parseInt(Config.depth),
-				}).then(function (data) {
-					createNodes(data);
-					Nodes.update([
-						{
-							id: nodeId,
-							opacity: 1,
-							shapeProperties: {
-								borderDashes: false,
-							},
-						},
-					]);
-				});
+			let nodeId = params.nodes[0];
+
+			if (nodeId !== undefined) {
+				let hashIndex = nodeId.indexOf('#');
+				let titleLabel = nodeId.split('_')[0];
+				let hashIndexTitle = titleLabel.indexOf('#');
+
+				if (hashIndexTitle !== -1) {
+					titleLabel = titleLabel.substring(0, hashIndexTitle);
+				}
+
+				let title = hashIndex !== -1 ? nodeId.substring(0, hashIndex) : nodeId;
+				let url = mw.config.get('wgArticlePath').replace('$1', titleLabel);
+				window.open(url, '_blank');
 			}
 		});
 	}
