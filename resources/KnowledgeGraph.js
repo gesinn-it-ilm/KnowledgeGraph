@@ -340,14 +340,21 @@ KnowledgeGraph = function () {
 					case '_wpg':
 						for (var ii in property.values) {
 							var targetLabel = property.values[ii].value;
+							var typeId = 9;
+							var valueId = KnowledgeGraphFunctions.makeNodeId(targetLabel, typeId);
 							PropIdPropLabelMap[legendLabel].push(targetLabel);
 
 							var from = property.inverse ? targetLabel : label;
 							var to = property.inverse ? label : targetLabel;
 
+							debugger;
+							// var edgeId = KnowledgeGraphFunctions.makeEdgeId(from, to, property.canonicalLabel || propLabel);
+							var edgeId = KnowledgeGraphFunctions.makeEdgeId(from, to, property.canonicalLabel || propLabel, typeId);
+
 							var edgeConfig = jQuery.extend(
 								JSON.parse(JSON.stringify(Config.graphOptions.edges)),
 								{
+									id: edgeId,
 									from: from,
 									to: to,
 									label: propLabel,
@@ -368,39 +375,86 @@ KnowledgeGraph = function () {
 								options.image = property.values[ii].src;
 							}
 
-							addArticleNode(data, targetLabel, options, 9);
+							addArticleNode(data, targetLabel, options, typeId);
 						}
 						break;
 
 					default:
-						var targetLabel = '';
-						for (var ii in property.values) {
-							targetLabel = property.values[ii].value;
 
-							var valueId = `${targetLabel}#${KnowledgeGraphFunctions.uuidv4()}`;
-							PropIdPropLabelMap[legendLabel].push(valueId);
+					const seen = new Set();
 
-							Edges.add({
-								from: label,
-								to: valueId,
-								label: propLabel,
-								group: label,
-							});
+for (const { value: targetLabel } of property.values) {
+	if (seen.has(targetLabel)) continue;
+	seen.add(targetLabel);
 
-							var propValue = property.values.map((x) => x.value).join(', ');
+	const typeId = property.typeId === '_txt' ? 2 : property.typeId;
+	const valueId = KnowledgeGraphFunctions.makeNodeId(targetLabel, typeId);
+	const edgeLabel = property.canonicalLabel || propLabel;
 
-							Nodes.add(
-								jQuery.extend(options, {
-									id: valueId,
-									label:
-										propValue.length <= maxPropValueLength
-											? propValue
-											: propValue.substring(0, maxPropValueLength) + '…',
-									typeID: property.typeId === '_txt' ? 2 : property.typeId,
-								})
-							);
-						}
+	PropIdPropLabelMap[legendLabel].push(valueId);
+
+	debugger;
+	// Dodaj ivicu
+	const edgeId = KnowledgeGraphFunctions.makeEdgeId(label, valueId, edgeLabel);
+	Edges.add({
+		id: edgeId,
+		from: label,
+		to: valueId,
+		label: propLabel,
+		group: label,
+	});
+
+	// Dodaj čvor ako ne postoji
+	if (!Nodes.get(valueId)) {
+		const displayLabel = targetLabel.length <= maxPropValueLength
+			? targetLabel
+			: targetLabel.substring(0, maxPropValueLength) + '…';
+
+		Nodes.add(
+			jQuery.extend({}, options, {
+				id: valueId,
+				label: displayLabel,
+				typeID: typeId,
+			})
+		);
+	}
+}
+
+						
+						// for (var ii in property.values) {
+						// 	var targetLabel = property.values[ii].value;
+						// 	var typeId = property.typeId === '_txt' ? 2 : property.typeId;
+						// 	var valueId = KnowledgeGraphFunctions.makeNodeId(targetLabel, typeId);
+						// 	PropIdPropLabelMap[legendLabel].push(valueId);
+
+						// 	var from = label;
+						// 	var to = valueId;
+						// 	var edgeId = KnowledgeGraphFunctions.makeEdgeId(from, to, property.canonicalLabel || propLabel);
+
+						// 	Edges.add({
+						// 		id: edgeId,
+						// 		from: from,
+						// 		to: to,
+						// 		label: propLabel,
+						// 		group: label,
+						// 	});
+
+						// 	var propValue = property.values.map((x) => x.value).join(', ');
+
+						// 	debugger;
+						// 	Nodes.add(
+						// 		jQuery.extend(options, {
+						// 			id: valueId,
+						// 			label:
+						// 				propValue.length <= maxPropValueLength
+						// 					? propValue
+						// 					: propValue.substring(0, maxPropValueLength) + '…',
+						// 			typeID: typeId,
+						// 		})
+						// 	);
+						// }
 				}
+
 			}
 		}
 
@@ -893,25 +947,95 @@ ${propertyOptions}|show-property-type=true
 		self.setActive(false);
 	}
 
-	function removeNodeAndDescendants(nodeId) {
-		const outgoingEdges = Edges.get().filter(e => e.from === nodeId);
-
-		outgoingEdges.forEach(edge => {
-			const childNodeId = edge.to;
-			Edges.remove(edge.id);
-
-			const otherIncomingEdges = Edges.get().filter(e => e.to === childNodeId);
-			if (otherIncomingEdges.length === 0) {
-				removeNodeAndDescendants(childNodeId);
+	function findNodeIdContaining(labelPart) {
+		const allNodes = Nodes.get();
+		for (let node of allNodes) {
+			if (node.id.includes(labelPart)) {
+				return node.id;
 			}
+		}
+		return null;
+	}
+
+	function removeDescendantsFromEdgeLabelOnce(nodeId, edgeLabel) {
+		const initialEdges = Edges.get({
+			filter: e => e.from === nodeId && e.label === edgeLabel
 		});
 
-		Nodes.remove(nodeId);
-		delete Data[nodeId];
+		const visited = new Set();
+
+		initialEdges.forEach(e => {
+			graphModel.removeEdge(e.id);
+			removeNodeRecursively(e.to, visited);
+		});
+	}
+
+	function normalizePropKey(str) {
+	return str.replace(/[_-]/g, ' ').replace(/"/g, '').trim().toLowerCase();
+}
+
+	function removeNodeRecursively(nodeId, visited) {
+		if (visited.has(nodeId)) return;
+		visited.add(nodeId);
+
+		// Nađi sve outgoing ivice iz node-a
+		const edgesFromNode = Edges.get({
+			filter: e => e.from === nodeId
+		});
+
+		// Za svaku ivicu:
+		edgesFromNode.forEach(edge => {
+			const target = edge.to;
+			graphModel.removeEdge(edge.id);
+			removeNodeRecursively(target, visited);
+		});
+
+		// Nađi sve incoming ivice (da li je ovaj node vezan još negde)
+		const incomingEdges = Edges.get({
+			filter: e => e.to === nodeId
+		});
+
+		// Ako više nije vezan, obriši čvor
+		if (incomingEdges.length === 0 && Nodes.get(nodeId)) {
+			graphModel.removeNode(nodeId);
+		}
+	}
+
+	function removeNodeAndDescendants(nodeId, keepNodeId, visited = new Set()) {
+		if (visited.has(nodeId)) return;
+		visited.add(nodeId);
+
+		if (nodeId === keepNodeId) return;
+
+		const edgesFromNode = Edges.get({
+			filter: e => e.from === nodeId
+		});
+
+		edgesFromNode.forEach(edge => {
+			graphModel.removeEdge(edge.id);
+			removeNodeAndDescendants(edge.to, keepNodeId, visited);
+		});
+
+		const incomingEdges = Edges.get({
+			filter: e => e.to === nodeId
+		});
+
+		incomingEdges.forEach(edge => {
+			graphModel.removeEdge(edge.id);
+		});
+
+		const remainingEdges = Edges.get({
+			filter: e => e.from === nodeId || e.to === nodeId
+		});
+
+		if (remainingEdges.length === 0 && Nodes.get(nodeId) && nodeId !== keepNodeId) {
+			graphModel.removeNode(nodeId);
+		}
 	}
 
 	function attachContextMenuListener() {
 		Network.on('oncontext', function (params) {
+			debugger;
 			params.event.preventDefault();
 			// close custom menu if exists
 			$('.custom-menu').hide();
@@ -946,22 +1070,31 @@ ${propertyOptions}|show-property-type=true
 
 			// right click on node should show properties and link to article
 			if (nodeId !== undefined) {
+				let existingNodes = Nodes.get();
 				let hashIndex = nodeId.indexOf('#');
-				let titleLabel = nodeId.split('_')[0];
+				let titleLabel = nodeId.split('#')[0];
 				let hashIndexTitle = titleLabel.indexOf('#');
 				if (hashIndexTitle !== -1) {
 					titleLabel = titleLabel.substring(0, hashIndexTitle);
 				}
 				let title = hashIndex !== -1 ? nodeId.substring(0, hashIndex) : nodeId;
-				let url = mw.config.get('wgArticlePath').replace('$1', titleLabel);
 
-				let liLink = document.createElement('li');
-				liLink.classList.add('custom-menu-link-entry');
-				liLink.innerHTML = '🔗 ' + titleLabel;
-				liLink.addEventListener('click', () => window.open(url, '_blank'));
-				$menu.append(liLink);
+				const currentNode = existingNodes.find(n => n.id === nodeId);
+				const nodeTypeId = currentNode ? currentNode.typeID : null;
 
-				fetchSemanticDataForNode(title, function (rawProps) {
+				if (nodeTypeId !== 2) {
+					let url = mw.config.get('wgArticlePath').replace('$1', titleLabel);
+
+					let liLink = document.createElement('li');
+					liLink.classList.add('custom-menu-link-entry');
+					liLink.innerHTML = '🔗 ' + titleLabel;
+					liLink.addEventListener('click', () => window.open(url, '_blank'));
+					$menu.append(liLink);
+				} else {
+					console.log(`Node ${nodeId} is type 2 (text), skipping link creation.`);
+				}
+
+				fetchSemanticDataForNode(nodeId, function (rawProps) {
 					let props = parseProperties(rawProps).filter(p => !p.property.startsWith('_'));
 					nodePropertiesCache[title] = props;
 
@@ -978,6 +1111,7 @@ ${propertyOptions}|show-property-type=true
 							$menu.append(li);
 						});
 					}
+
 					// Add click handler for property entries to create nodes and edges
 					$('.custom-menu li.custom-menu-property-entry').click(function () {
 						let clickedProperty = $(this).data('action');
@@ -987,9 +1121,8 @@ ${propertyOptions}|show-property-type=true
 						let propertyData = getPropertyValueForNode(title, clickedProperty, clickedDirection);
 
 						if (propertyData && Array.isArray(propertyData.value)) {
-							typeID = propertyData.typeID || null;
+							let typeID = propertyData.typeID || null;
 
-							// Create property key based on direction
 							let propKey = clickedDirection === 'inverse' ? `-${clickedProperty}` : clickedProperty;
 							if (!(propKey in PropColors)) {
 								let color_;
@@ -1000,8 +1133,7 @@ ${propertyOptions}|show-property-type=true
 							}
 							let nodeColor = PropColors[propKey];
 
-							// when node is clicked, update Data object
-							let currentNodeId = title.includes('_') ? title : `${title}_${propertyData.typeID}`;
+							let currentNodeId = title.includes('_') ? title : `${title}_${typeID}`;
 							let dataKey = currentNodeId.split('_')[0];
 							if (!Data[dataKey]) {
 								Data[dataKey] = {
@@ -1009,7 +1141,6 @@ ${propertyOptions}|show-property-type=true
 								};
 							}
 
-							// If property does not exist, create it and add to Data
 							if (!Data[dataKey].properties[propKey]) {
 								Data[dataKey].properties[propKey] = {
 									key: propKey,
@@ -1018,72 +1149,122 @@ ${propertyOptions}|show-property-type=true
 							}
 
 							propertyData.value.forEach(valueItem => {
-								let newNodeId = valueItem.split('#')[0];
-								let newNodeLabel = valueItem.split('#')[0];
+								let nodesExisting = Nodes.get();
+								let edgesExisting = Edges.get();
 
-								let newLabel = newNodeLabel.replaceAll('_', ' ');
-								let nodeId = `${newLabel}_${typeID}`;
+								let rawLabel = valueItem;
+								let labelWithoutHash = rawLabel.split('#')[0];
+								let displayLabel = labelWithoutHash.replaceAll('_', ' ');
 
-								let nodeAlreadyExists = Nodes.get().some(n => n.label === newLabel && n.typeID === propertyData.typeID);
+								let nodeId = KnowledgeGraphFunctions.makeNodeId(displayLabel, typeID);
 
-								let fromNode = propertyData.direction === 'inverse' ? nodeId : title;
-								let toNode = propertyData.direction === 'inverse' ? title : nodeId;
-								let edgeLabel = propertyData.direction === 'inverse' ? "-" + clickedProperty : clickedProperty;
-								let edgeId = `${fromNode}_${toNode}_${edgeLabel}`;
+								let fromNode = clickedDirection === 'inverse' ? nodeId : title;
+								let toNode = clickedDirection === 'inverse' ? title : nodeId;
 
-								let edgeAlreadyExists = edgeExistsTest(fromNode, toNode, edgeLabel);
+								debugger;
+								let edgePropKey = clickedDirection === 'inverse' ? `-${clickedProperty}` : clickedProperty;
+								// let edgeId = KnowledgeGraphFunctions.makeEdgeId(fromNode, toNode, edgePropKey);
+								let edgeId = KnowledgeGraphFunctions.makeEdgeId(fromNode, toNode, edgePropKey, typeID, Nodes);
 
-								if (nodeAlreadyExists && edgeAlreadyExists) {
-									Edges.remove(edgeId);
-									// check if node has any incoming edges left
-									const incomingEdges = Edges.get().filter(e => e.to === nodeId);
+								let nodeExists = nodesExisting.some(n =>
+									n.id === nodeId || (n.label === displayLabel && n.typeID === typeID )
+								);
+								
+								if (nodeExists) {
+									let edgeExists = edgesExisting.some(e => e.id === edgeId);
 
-									if (incomingEdges.length === 0) {
-										// no incoming edges left, remove node and its descendants
-										removeNodeAndDescendants(nodeId);
+									if (!Nodes.get(fromNode)) {
+									const foundFrom = findNodeIdContaining(fromNode);
+									if (foundFrom) {
+										fromNode = foundFrom;
 									}
+								}
+
+								if (!edgeExists) {
+									let edgeConfig = {
+									id: edgeId,
+									from: fromNode,
+									to: toNode,
+									label: edgePropKey,
+								};
+									if (typeID === 9) {
+										edgeConfig.arrows = { to: { enabled: true } };
+									}
+									
+									graphModel.addEdge(edgeConfig);
+								}
+
+								debugger;
+								if (nodeExists && edgeExists) { 
+
+									let proba = title;
+									let existingNode = nodesExisting.find(n => n.id === nodeId || (n.label === displayLabel && n.typeID === typeID));
+									if (existingNode) {
+										let propMatch = normalizePropKey(propertyData.property) === normalizePropKey(edgePropKey);
+										if (propMatch) {
+											removeNodeAndDescendants(existingNode.id, title);
+											return;
+										}
+									}
+								}
+
+								return;
+							}
+							if (!nodeExists) {
+								let nodeConfig = {
+									id: nodeId,
+									label: displayLabel,
+									typeID: typeID,
+									color: nodeColor,
+								};
+								if (typeID === 9) {
+									nodeConfig.shape = 'box';
+									nodeConfig.font = { size: 30 };
+
+									if (!Data[nodeId]) {
+										let dataKey = nodeId.split('_')[0];
+										Data[dataKey] = { properties: [] };
+									}
+								}
+								graphModel.addNode(nodeConfig);
+							} else {
+								console.log(`Node already exists: ${nodeId}`);
+							}
+
+							let edgeExists = edgesExisting.some(e => e.id === edgeId);
+							if (!Nodes.get(fromNode)) {
+								const foundFrom = findNodeIdContaining(fromNode);
+								if (foundFrom) {
+									fromNode = foundFrom;
+								}
+							}
+
+							if (!Nodes.get(toNode)) {
+								const foundTo = findNodeIdContaining(toNode);
+								if (foundTo) {
+									toNode = foundTo;
+								}
+							}
+
+							if (!edgeExists && fromNode && toNode) {
+								let edgeConfig = {
+									id: edgeId,
+									from: fromNode,
+									to: toNode,
+									label: edgePropKey,
+								};
+									if (typeID === 9) {
+										edgeConfig.arrows = { to: { enabled: true } };
+									}
+									
+									graphModel.addEdge(edgeConfig);
 								} else {
-									if (!nodeAlreadyExists) {
-										let nodeConfig = {
-											id: nodeId,
-											label: newLabel,
-											typeID: propertyData.typeID,
-											color: nodeColor,
-										};
-
-										if (propertyData.typeID === 9) {
-											nodeConfig.shape = 'box';
-											nodeConfig.font = { size: 30 };
-
-											if (!Data[nodeId]) {
-												let dataKey = nodeId.split('_')[0];
-												Data[dataKey] = {
-													properties: []
-												};
-											}
-										}
-
-										graphModel.addNode(nodeConfig);
-									}
-
-									if (!edgeAlreadyExists) {
-										let edgeConfig = {
-											id: edgeId,
-											from: fromNode,
-											to: toNode,
-											label: edgeLabel,
-										};
-
-										if (propertyData.typeID === 9) {
-											edgeConfig.arrows = { to: { enabled: true } };
-										}
-
-										graphModel.addEdge(edgeConfig);
-									}
+									console.log(`Edge already exists: ${edgeId}`);
 								}
 							});
 						}
 					});
+
 				});
 			}
 
@@ -1121,10 +1302,11 @@ ${propertyOptions}|show-property-type=true
 	}
 
 	function fetchSemanticDataForNode(title, callback) {
-		let cleanTitle = title.split('_')[0];
-		let type = title.split('_')[1];
+		let cleanTitle = title.split('#')[0];
+		let type = title.split('#')[1];
 		if (type === '2') {
-			cleanTitle = title;
+			callback([]);
+        	return;
 		}	
 		mw.loader.using('mediawiki.api').then(function() {
 			new mw.Api().get({
@@ -1231,6 +1413,7 @@ ${propertyOptions}|show-property-type=true
 	}
 
 	function initialize(container, containerToolbar, containerOptions, config) {
+		console.warn("initialize called");
 		InitialData = JSON.parse(JSON.stringify(config.data));
 		Config = config;
 		Container = container;
@@ -1268,6 +1451,18 @@ ${propertyOptions}|show-property-type=true
 			addEdge: function(edge) {
 				if (!this.edges.get(edge.id)) {
 				this.edges.add(edge);
+				}
+			},
+
+			removeNode: function(nodeId) {
+				if (this.nodes.get(nodeId)) {
+					this.nodes.remove(nodeId);
+				}
+			},
+
+			removeEdge: function(edgeId) {
+				if (this.edges.get(edgeId)) {
+					this.edges.remove(edgeId);
 				}
 			}
 		};
