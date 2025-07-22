@@ -1337,50 +1337,46 @@ ${propertyOptions}|show-property-type=true
 				if (this.edges.get(edgeId)) {
 					this.edges.remove(edgeId);
 				}
+			},
+
+			removeNodeAndDescendants: function(nodeId, keepNodeId, visited = new Set()) {
+				if (visited.has(nodeId)) return;
+					visited.add(nodeId);
+
+				if (nodeId === keepNodeId) return;
+
+				const edgesFromNode = this.edges.get({
+					filter: e => e.from === nodeId
+				});
+
+				edgesFromNode.forEach(edge => {
+					this.removeEdge(edge.id);
+					this.removeNodeAndDescendants(edge.to, keepNodeId, visited);
+				});
+
+				const incomingEdges = this.edges.get({
+					filter: e => e.to === nodeId
+				});
+
+				incomingEdges.forEach(edge => {
+					if (edge.from === keepNodeId || edge.from.split('#')[0] === keepNodeId) {
+						this.removeEdge(edge.id);
+					}
+				});
+
+				const remainingEdges = this.edges.get({
+					filter: e => e.from === nodeId || e.to === nodeId
+				});
+
+				if (remainingEdges.length === 0 && this.nodes.get(nodeId) && nodeId !== keepNodeId) {
+					this.removeNode(nodeId);
+				}
+			},
+
+			normalizePropKey: function(str) {
+				return str.replace(/[_-]/g, ' ').replace(/"/g, '').trim().toLowerCase();
 			}
 		};
-
-		function normalizePropKey(str) {
-			return str.replace(/[_-]/g, ' ').replace(/"/g, '').trim().toLowerCase();
-		}
-
-		function removeNodeAndDescendants(nodeId, keepNodeId, visited = new Set()) {
-			if (visited.has(nodeId)) return;
-			visited.add(nodeId);
-
-			if (nodeId === keepNodeId) return;
-
-			const edgesFromNode = Edges.get({
-				filter: e => e.from === nodeId
-			});
-
-			edgesFromNode.forEach(edge => {
-				graphModel.removeEdge(edge.id);
-				removeNodeAndDescendants(edge.to, keepNodeId, visited);
-			});
-
-			const incomingEdges = Edges.get({
-				filter: e => e.to === nodeId
-			});
-
-			incomingEdges.forEach(edge => {
-				if (edge.from === keepNodeId || edge.from.split('#')[0] === keepNodeId) {
-					graphModel.removeEdge(edge.id);
-				}
-			});
-
-
-			const remainingEdges = Edges.get({
-				filter: e => e.from === nodeId || e.to === nodeId
-			});
-
-			if (remainingEdges.length === 0 && Nodes.get(nodeId) && nodeId !== keepNodeId) {
-				graphModel.removeNode(nodeId);
-			}
-		}
-
-		graphModel.removeNodeAndDescendants = removeNodeAndDescendants;
-		graphModel.normalizePropKey = normalizePropKey;
 
 		Config.graphOptions.interaction = Config.graphOptions.interaction || {};
 		Config.graphOptions.interaction.hover = true;
