@@ -1413,7 +1413,6 @@ ${propertyOptions}|show-property-type=true
 	}
 
 	function initialize(container, containerToolbar, containerOptions, config) {
-		console.warn("initialize called");
 		InitialData = JSON.parse(JSON.stringify(config.data));
 		Config = config;
 		Container = container;
