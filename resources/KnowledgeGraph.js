@@ -215,15 +215,17 @@ KnowledgeGraph = function () {
 			return;
 		}
 
+		let cleanLabel = label.split('#')[0];
+
 		var nodeConfig = jQuery.extend(
 			JSON.parse(JSON.stringify(Config.graphOptions.nodes)),
 			label in Config.propertyOptions ? Config.propertyOptions[label] : {},
 			{
 				id: label,
 				label:
-					label.length <= maxPropValueLength
-						? label
-						: label.substring(0, maxPropValueLength) + '…',
+					cleanLabel.length <= maxPropValueLength
+						? cleanLabel
+						: cleanLabel.substring(0, maxPropValueLength) + '…',
 				shape: 'box',
 				font: { size: 30 },
 				typeID: typeID || 9,
@@ -344,6 +346,7 @@ KnowledgeGraph = function () {
 							var valueId = KnowledgeGraphFunctions.makeNodeId(targetLabel, typeId);
 							PropIdPropLabelMap[legendLabel].push(targetLabel);
 
+							targetLabel = targetLabel + '#' + typeId;
 							var from = property.inverse ? targetLabel : label;
 							var to = property.inverse ? label : targetLabel;
 
@@ -914,81 +917,7 @@ ${propertyOptions}|show-property-type=true
 		return null;
 	}
 
-	function removeDescendantsFromEdgeLabelOnce(nodeId, edgeLabel) {
-		const initialEdges = Edges.get({
-			filter: e => e.from === nodeId && e.label === edgeLabel
-		});
-
-		const visited = new Set();
-
-		initialEdges.forEach(e => {
-			graphModel.removeEdge(e.id);
-			removeNodeRecursively(e.to, visited);
-		});
-	}
-
-	function normalizePropKey(str) {
-	return str.replace(/[_-]/g, ' ').replace(/"/g, '').trim().toLowerCase();
-}
-
-	function removeNodeRecursively(nodeId, visited) {
-		if (visited.has(nodeId)) return;
-		visited.add(nodeId);
-
-		// Nađi sve outgoing ivice iz node-a
-		const edgesFromNode = Edges.get({
-			filter: e => e.from === nodeId
-		});
-
-		// Za svaku ivicu:
-		edgesFromNode.forEach(edge => {
-			const target = edge.to;
-			graphModel.removeEdge(edge.id);
-			removeNodeRecursively(target, visited);
-		});
-
-		// Nađi sve incoming ivice (da li je ovaj node vezan još negde)
-		const incomingEdges = Edges.get({
-			filter: e => e.to === nodeId
-		});
-
-		// Ako više nije vezan, obriši čvor
-		if (incomingEdges.length === 0 && Nodes.get(nodeId)) {
-			graphModel.removeNode(nodeId);
-		}
-	}
-
-	function removeNodeAndDescendants(nodeId, keepNodeId, visited = new Set()) {
-		if (visited.has(nodeId)) return;
-		visited.add(nodeId);
-
-		if (nodeId === keepNodeId) return;
-
-		const edgesFromNode = Edges.get({
-			filter: e => e.from === nodeId
-		});
-
-		edgesFromNode.forEach(edge => {
-			graphModel.removeEdge(edge.id);
-			removeNodeAndDescendants(edge.to, keepNodeId, visited);
-		});
-
-		const incomingEdges = Edges.get({
-			filter: e => e.to === nodeId
-		});
-
-		incomingEdges.forEach(edge => {
-			graphModel.removeEdge(edge.id);
-		});
-
-		const remainingEdges = Edges.get({
-			filter: e => e.from === nodeId || e.to === nodeId
-		});
-
-		if (remainingEdges.length === 0 && Nodes.get(nodeId) && nodeId !== keepNodeId) {
-			graphModel.removeNode(nodeId);
-		}
-	}
+	
 
 	function attachContextMenuListener() {
 		Network.on('oncontext', function (params) {
@@ -1147,12 +1076,11 @@ ${propertyOptions}|show-property-type=true
 								}
 
 								if (nodeExists && edgeExists) { 
-									let proba = title;
 									let existingNode = nodesExisting.find(n => n.id === nodeId || (n.label === displayLabel && n.typeID === typeID));
 									if (existingNode) {
-										let propMatch = normalizePropKey(propertyData.property) === normalizePropKey(edgePropKey);
+										let propMatch = graphModel.normalizePropKey(propertyData.property) === graphModel.normalizePropKey(edgePropKey);
 										if (propMatch) {
-											removeNodeAndDescendants(existingNode.id, title);
+											graphModel.removeNodeAndDescendants(existingNode.id, title);
 											return;
 										}
 									}
@@ -1411,6 +1339,48 @@ ${propertyOptions}|show-property-type=true
 				}
 			}
 		};
+
+		function normalizePropKey(str) {
+			return str.replace(/[_-]/g, ' ').replace(/"/g, '').trim().toLowerCase();
+		}
+
+		function removeNodeAndDescendants(nodeId, keepNodeId, visited = new Set()) {
+			if (visited.has(nodeId)) return;
+			visited.add(nodeId);
+
+			if (nodeId === keepNodeId) return;
+
+			const edgesFromNode = Edges.get({
+				filter: e => e.from === nodeId
+			});
+
+			edgesFromNode.forEach(edge => {
+				graphModel.removeEdge(edge.id);
+				removeNodeAndDescendants(edge.to, keepNodeId, visited);
+			});
+
+			const incomingEdges = Edges.get({
+				filter: e => e.to === nodeId
+			});
+
+			incomingEdges.forEach(edge => {
+				if (edge.from === keepNodeId || edge.from.split('#')[0] === keepNodeId) {
+					graphModel.removeEdge(edge.id);
+				}
+			});
+
+
+			const remainingEdges = Edges.get({
+				filter: e => e.from === nodeId || e.to === nodeId
+			});
+
+			if (remainingEdges.length === 0 && Nodes.get(nodeId) && nodeId !== keepNodeId) {
+				graphModel.removeNode(nodeId);
+			}
+		}
+
+		graphModel.removeNodeAndDescendants = removeNodeAndDescendants;
+		graphModel.normalizePropKey = normalizePropKey;
 
 		Config.graphOptions.interaction = Config.graphOptions.interaction || {};
 		Config.graphOptions.interaction.hover = true;
