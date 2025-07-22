@@ -347,8 +347,6 @@ KnowledgeGraph = function () {
 							var from = property.inverse ? targetLabel : label;
 							var to = property.inverse ? label : targetLabel;
 
-							debugger;
-							// var edgeId = KnowledgeGraphFunctions.makeEdgeId(from, to, property.canonicalLabel || propLabel);
 							var edgeId = KnowledgeGraphFunctions.makeEdgeId(from, to, property.canonicalLabel || propLabel, typeId);
 
 							var edgeConfig = jQuery.extend(
@@ -380,84 +378,43 @@ KnowledgeGraph = function () {
 						break;
 
 					default:
+						const seen = new Set();
+						for (const { value: targetLabel } of property.values) {
+							if (seen.has(targetLabel)) continue;
+							seen.add(targetLabel);
 
-					const seen = new Set();
+							const typeId = property.typeId === '_txt' ? 2 : property.typeId;
+							const valueId = KnowledgeGraphFunctions.makeNodeId(targetLabel, typeId);
+							const edgeLabel = property.canonicalLabel || propLabel;
 
-for (const { value: targetLabel } of property.values) {
-	if (seen.has(targetLabel)) continue;
-	seen.add(targetLabel);
+							PropIdPropLabelMap[legendLabel].push(valueId);
 
-	const typeId = property.typeId === '_txt' ? 2 : property.typeId;
-	const valueId = KnowledgeGraphFunctions.makeNodeId(targetLabel, typeId);
-	const edgeLabel = property.canonicalLabel || propLabel;
+							const edgeId = KnowledgeGraphFunctions.makeEdgeId(label, valueId, edgeLabel);
+							Edges.add({
+								id: edgeId,
+								from: label,
+								to: valueId,
+								label: propLabel,
+								group: label,
+							});
 
-	PropIdPropLabelMap[legendLabel].push(valueId);
+							if (!Nodes.get(valueId)) {
+								const displayLabel = targetLabel.length <= maxPropValueLength
+									? targetLabel
+									: targetLabel.substring(0, maxPropValueLength) + '…';
 
-	debugger;
-	// Dodaj ivicu
-	const edgeId = KnowledgeGraphFunctions.makeEdgeId(label, valueId, edgeLabel);
-	Edges.add({
-		id: edgeId,
-		from: label,
-		to: valueId,
-		label: propLabel,
-		group: label,
-	});
-
-	// Dodaj čvor ako ne postoji
-	if (!Nodes.get(valueId)) {
-		const displayLabel = targetLabel.length <= maxPropValueLength
-			? targetLabel
-			: targetLabel.substring(0, maxPropValueLength) + '…';
-
-		Nodes.add(
-			jQuery.extend({}, options, {
-				id: valueId,
-				label: displayLabel,
-				typeID: typeId,
-			})
-		);
-	}
-}
-
-						
-						// for (var ii in property.values) {
-						// 	var targetLabel = property.values[ii].value;
-						// 	var typeId = property.typeId === '_txt' ? 2 : property.typeId;
-						// 	var valueId = KnowledgeGraphFunctions.makeNodeId(targetLabel, typeId);
-						// 	PropIdPropLabelMap[legendLabel].push(valueId);
-
-						// 	var from = label;
-						// 	var to = valueId;
-						// 	var edgeId = KnowledgeGraphFunctions.makeEdgeId(from, to, property.canonicalLabel || propLabel);
-
-						// 	Edges.add({
-						// 		id: edgeId,
-						// 		from: from,
-						// 		to: to,
-						// 		label: propLabel,
-						// 		group: label,
-						// 	});
-
-						// 	var propValue = property.values.map((x) => x.value).join(', ');
-
-						// 	debugger;
-						// 	Nodes.add(
-						// 		jQuery.extend(options, {
-						// 			id: valueId,
-						// 			label:
-						// 				propValue.length <= maxPropValueLength
-						// 					? propValue
-						// 					: propValue.substring(0, maxPropValueLength) + '…',
-						// 			typeID: typeId,
-						// 		})
-						// 	);
-						// }
+								Nodes.add(
+									jQuery.extend({}, options, {
+										id: valueId,
+										label: displayLabel,
+										typeID: typeId,
+									})
+								);
+							}
+						}
+					}
 				}
-
 			}
-		}
-
 		Data = jQuery.extend(Data, data);
 	}
 
@@ -1035,7 +992,6 @@ ${propertyOptions}|show-property-type=true
 
 	function attachContextMenuListener() {
 		Network.on('oncontext', function (params) {
-			debugger;
 			params.event.preventDefault();
 			// close custom menu if exists
 			$('.custom-menu').hide();
@@ -1090,8 +1046,6 @@ ${propertyOptions}|show-property-type=true
 					liLink.innerHTML = '🔗 ' + titleLabel;
 					liLink.addEventListener('click', () => window.open(url, '_blank'));
 					$menu.append(liLink);
-				} else {
-					console.log(`Node ${nodeId} is type 2 (text), skipping link creation.`);
 				}
 
 				fetchSemanticDataForNode(nodeId, function (rawProps) {
@@ -1161,9 +1115,7 @@ ${propertyOptions}|show-property-type=true
 								let fromNode = clickedDirection === 'inverse' ? nodeId : title;
 								let toNode = clickedDirection === 'inverse' ? title : nodeId;
 
-								debugger;
 								let edgePropKey = clickedDirection === 'inverse' ? `-${clickedProperty}` : clickedProperty;
-								// let edgeId = KnowledgeGraphFunctions.makeEdgeId(fromNode, toNode, edgePropKey);
 								let edgeId = KnowledgeGraphFunctions.makeEdgeId(fromNode, toNode, edgePropKey, typeID, Nodes);
 
 								let nodeExists = nodesExisting.some(n =>
@@ -1194,9 +1146,7 @@ ${propertyOptions}|show-property-type=true
 									graphModel.addEdge(edgeConfig);
 								}
 
-								debugger;
 								if (nodeExists && edgeExists) { 
-
 									let proba = title;
 									let existingNode = nodesExisting.find(n => n.id === nodeId || (n.label === displayLabel && n.typeID === typeID));
 									if (existingNode) {
@@ -1227,8 +1177,6 @@ ${propertyOptions}|show-property-type=true
 									}
 								}
 								graphModel.addNode(nodeConfig);
-							} else {
-								console.log(`Node already exists: ${nodeId}`);
 							}
 
 							let edgeExists = edgesExisting.some(e => e.id === edgeId);
@@ -1258,8 +1206,6 @@ ${propertyOptions}|show-property-type=true
 									}
 									
 									graphModel.addEdge(edgeConfig);
-								} else {
-									console.log(`Edge already exists: ${edgeId}`);
 								}
 							});
 						}
