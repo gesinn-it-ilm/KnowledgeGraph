@@ -265,7 +265,6 @@ KnowledgeGraph = function () {
 				continue;
 			}
 
-			debugger;
 			addArticleNode(data, label);
 
 			if (data[label] === null) {
@@ -339,7 +338,6 @@ KnowledgeGraph = function () {
 					);
 				}
 
-				debugger;
 				switch (property.typeId) {
 					case '_wpg':
 						for (var ii in property.values) {
@@ -998,7 +996,6 @@ ${propertyOptions}|show-property-type=true
 
 					// Add click handler for property entries to create nodes and edges
 					$('.custom-menu li.custom-menu-property-entry').click(function () {
-						debugger;
 						let clickedProperty = $(this).data('action');
 						let clickedDirection = $(this).data('direction');
 						$('.custom-menu').hide();
@@ -1007,8 +1004,8 @@ ${propertyOptions}|show-property-type=true
 
 						if (propertyData && Array.isArray(propertyData.value)) {
 							let typeID = propertyData.typeID || null;
-
 							let propKey = clickedDirection === 'inverse' ? `-${clickedProperty}` : clickedProperty;
+
 							if (!(propKey in PropColors)) {
 								let color_;
 								do {
@@ -1033,10 +1030,12 @@ ${propertyOptions}|show-property-type=true
 								};
 							}
 
-							let nodesExisting = [];
-							let edgesExisting = [];
+							let nodesExisting = Nodes.get();
+							let	edgesExisting = Edges.get();
+							let keepNode = Network.getNodeAt(pointer);
+							let normalize = str => str.replace(/^-/, '');
+
 							propertyData.value.forEach(valueItem => {
-								debugger;
 								nodesExisting = Nodes.get();
 								edgesExisting = Edges.get();
 
@@ -1047,80 +1046,88 @@ ${propertyOptions}|show-property-type=true
 								let existingNode = nodesExisting.find(n => n.label === displayLabel && n.typeID === typeID);
 								let nodeId = existingNode ? existingNode.id : KnowledgeGraphFunctions.makeNodeId(displayLabel, typeID);
 
+								let fromRaw = clickedDirection === 'inverse' ? (nodeId) : (title);
+								let toRaw   = clickedDirection === 'inverse' ? (title) : (nodeId);
+
 								let edgePropKey = clickedDirection === 'inverse' ? `-${clickedProperty}` : clickedProperty;
 
-								let initialFrom = clickedDirection === 'inverse' ? nodeId : title;
-								let initialTo = clickedDirection === 'inverse' ? title : nodeId;
-
-								let fromNode = Nodes.get(initialFrom) ? initialFrom : findNodeIdContaining(initialFrom) || initialFrom;
-								let toNode = Nodes.get(initialTo) ? initialTo : findNodeIdContaining(initialTo) || initialTo;
+								let fromNode = Nodes.get(fromRaw) ? fromRaw : findNodeIdContaining(fromRaw) || fromRaw;
+								let toNode   = Nodes.get(toRaw)   ? toRaw   : findNodeIdContaining(toRaw)   || toRaw;
 
 								let edgeId = KnowledgeGraphFunctions.makeEdgeId(fromNode, toNode, edgePropKey, typeID, Nodes);
 
-								let nodeAlreadyExists = nodesExisting.some(n => n.id === nodeId);
-								if (!nodeAlreadyExists) {
-									let nodeConfig = {
-										id: nodeId,
-										label: displayLabel,
-										typeID: typeID,
-										color: nodeColor,
-									};
-									if (typeID === 9) {
-										nodeConfig.shape = 'box';
-										nodeConfig.font = { size: 30 };
+								// Part to remove edges and nodes
+								let edgeExists = edgesExisting.some(e => e.id === edgeId);
 
-										if (!Data[nodeId]) {
-											let dataKey = nodeId.split('_')[0];
-											Data[dataKey] = { properties: [] };
-										}
-									}
-									graphModel.addNode(nodeConfig);
+								if (edgeExists) {
+									graphModel.removeEdge(edgeId);
+
 									nodesExisting = Nodes.get();
 									edgesExisting = Edges.get();
+
+									let connectedEdges = Edges.get().filter(e =>
+										(e.from === nodeId || e.to === nodeId) && e.id !== edgeId
+									);
+
+									if (connectedEdges.length === 0) {
+										recursiveDeleteAllChildren(nodeId);
+
+										nodesExisting = Nodes.get();
+										edgesExisting = Edges.get();
+									}
+
+									return;
 								}
 
-								let normalizedLabel = edgePropKey.replace(/^-/, '');
-								let fromBase = fromNode.split('#')[0];
-								let toBase = toNode.split('#')[0];
+								function stripHashSuffix(str) {
+									return str.split('#')[0];
+								}
 
-								let edgeExists = edgesExisting.some(e => {
-									let eLabelNormalized = e.label.replace(/^-/, '');
-									let eFromBase = e.from.split('#')[0];
-									let eToBase = e.to.split('#')[0];
+								let clickedPropertyNormalized = normalize(edgePropKey);
+
+								let edgeToDelete = edgesExisting.find(edge => {
+									if (!edge.id) return false;
+
+									let parts = edge.id.split('→');
+									if (parts.length < 3) return false;
+
+									let fromPart = stripHashSuffix(parts[0]);
+									let labelPart = parts[1];
+									let toPart = stripHashSuffix(parts[2]);
 
 									return (
-										eLabelNormalized === normalizedLabel &&
 										(
-											(eFromBase === fromBase && eToBase === toBase) ||
-											(eFromBase === toBase && eToBase === fromBase)
-										)
+											(fromPart === stripHashSuffix(fromNode) && toPart === stripHashSuffix(toNode)) ||
+											(fromPart === stripHashSuffix(toNode) && toPart === stripHashSuffix(fromNode))
+										) &&
+											normalize(labelPart) === clickedPropertyNormalized
 									);
 								});
 
-								debugger;
-							if (edgeExists) {
-								graphModel.removeEdge(edgeId);
-
-								nodesExisting = Nodes.get();
-								edgesExisting = Edges.get();
-
-								let connectedEdges = Edges.get().filter(e =>
-									(e.from === nodeId || e.to === nodeId) && e.id !== edgeId
-								);
-								if (connectedEdges.length === 0) {
-									recursiveDeleteAllChildren(nodeId);
+								if (edgeToDelete) {
+									graphModel.removeEdge(edgeToDelete.id);
 
 									nodesExisting = Nodes.get();
 									edgesExisting = Edges.get();
-								} 
-								// else {
-								// 	graphModel.removeEdge(edgeId);
-								// 	graphModel.removeNode(nodeId);
 
-								// 	nodesExisting = Nodes.get();
-								// 	edgesExisting = Edges.get();
-								// }
-							} else if (fromNode && toNode) {
+									let { from, to } = edgeToDelete;
+									
+									let maybeDeleteNode = from === keepNode ? to : from;
+
+									let connectedEdges = Edges.get().filter(e =>
+										(e.from === maybeDeleteNode || e.to === maybeDeleteNode) &&
+										e.id !== edgeToDelete.id
+									);
+
+									if (connectedEdges.length === 0) {
+										recursiveDeleteAllChildren(maybeDeleteNode);
+										nodesExisting = Nodes.get();
+										edgesExisting = Edges.get();
+									}
+
+									return;
+								}
+
 								if (!nodesExisting.some(n => n.id === nodeId)) {
 									let nodeConfig = {
 										id: nodeId,
@@ -1155,7 +1162,7 @@ ${propertyOptions}|show-property-type=true
 								graphModel.addEdge(edgeConfig);
 								nodesExisting = Nodes.get();
 								edgesExisting = Edges.get();
-							}
+
 							});
 						}
 					});
