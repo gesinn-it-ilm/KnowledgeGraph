@@ -1308,22 +1308,6 @@ ${propertyOptions}|show-property-type=true
 		return cleanLabel;
 	}
 
-	function edgeExistsTest(nodeA, nodeB, label) {
-		const normalizedLabel = normalizeLabel(label);
-
-		return Edges.get().some(e => {
-			const eNormalizedLabel = normalizeLabel(e.label);
-
-			const sameNodes = 
-				(e.from === nodeA && e.to === nodeB) ||
-				(e.from === nodeB && e.to === nodeA);
-
-			const sameLabel = eNormalizedLabel === normalizedLabel;
-
-			return sameNodes && sameLabel;
-		});
-	}
-
 	function initialize(container, containerToolbar, containerOptions, config) {
 		InitialData = JSON.parse(JSON.stringify(config.data));
 		Config = config;
@@ -1375,46 +1359,6 @@ ${propertyOptions}|show-property-type=true
 				if (this.edges.get(edgeId)) {
 					this.edges.remove(edgeId);
 				}
-			},
-
-			removeNodeAndDescendants: function(nodeId, keepNodeId, visited = new Set()) {
-				if (visited.has(nodeId)) return;
-					visited.add(nodeId);
-
-				if (nodeId === keepNodeId) return;
-
-				const edgesFromNode = this.edges.get({
-					filter: e => e.from === nodeId
-				});
-
-				edgesFromNode.forEach(edge => {
-					this.removeEdge(edge.id);
-					Edges.remove(Edges.get(edge.id));
-					this.removeNodeAndDescendants(edge.to, keepNodeId, visited);
-				});
-
-				const incomingEdges = this.edges.get({
-					filter: e => e.to === nodeId
-				});
-
-				incomingEdges.forEach(edge => {
-					if (edge.from === keepNodeId || edge.from.split('#')[0] === keepNodeId) {
-						this.removeEdge(edge.id);
-						Edges.remove(Edges.get(edge.id));
-					}
-				});
-
-				const remainingEdges = this.edges.get({
-					filter: e => e.from === nodeId || e.to === nodeId
-				});
-
-				if (remainingEdges.length === 0 && this.nodes.get(nodeId) && nodeId !== keepNodeId) {
-					this.removeNode(nodeId);
-				}
-			},
-
-			normalizePropKey: function(str) {
-				return str.replace(/[_-]/g, ' ').replace(/"/g, '').trim().toLowerCase();
 			}
 		};
 
