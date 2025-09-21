@@ -41,15 +41,16 @@ KnowledgeGraph = function () {
 		container.style.color = 'black';
 		container.style.background = color;
 		container.innerHTML = label;
+	    container.innerHTML = id;
 
 		container.dataset.active = true;
 		container.dataset.active_color = color;
 
-		container.addEventListener('click', (event) =>
-			dispatchEvent_LegendClick(event, id)
-		);
-
 		LegendDiv.append(container);
+	}
+
+	function checkAndToogleId(id) {
+		return id.trim().replace(/_/g, ' ').replace(/#.*$/, '');
 	}
 
 	function dispatchEvent_LegendClick(event, id) {
@@ -78,7 +79,7 @@ KnowledgeGraph = function () {
 
 				var found = false;
 				connectedEdges.forEach((edge) => {
-					if (edge.to === nodeId) {
+					if (edge.to === nodeId || edge.from === nodeId) {
 						found = true;
 					}
 				});
@@ -92,9 +93,10 @@ KnowledgeGraph = function () {
 				}
 			}
 		}
-
+		
 		Nodes.forEach((node) => {
-			if (PropIdPropLabelMap[id].indexOf(node.id) !== -1) {
+			var idValue = checkAndToogleId(node.id);
+			if (PropIdPropLabelMap[id].indexOf(idValue) !== -1) {
 				updateNodes.push({
 					id: node.id,
 					hidden: container.dataset.active === 'true' ? false : true,
@@ -227,7 +229,11 @@ KnowledgeGraph = function () {
 						? cleanLabel
 						: cleanLabel.substring(0, maxPropValueLength) + '…',
 				shape: 'box',
-				font: { size: 30 },
+				font: jQuery.extend(
+					{},
+					Config.graphOptions.nodes.font,
+					{ size: Config.graphOptions.nodes.font.size || 30 }
+				),
 				typeID: typeID || 9,
 
 				// https://visjs.github.io/vis-network/examples/network/other/popups.html
@@ -842,7 +848,17 @@ ${propertyOptions}|show-property-type=true
 						nodes: Nodes,
 						edges: Edges,
 						addNode: function(node) { if (!this.nodes.get(node.id)) this.nodes.add(node); },
-						addEdge: function(edge) { if (!this.edges.get(edge.id)) this.edges.add(edge); }
+						addEdge: function(edge) { if (!this.edges.get(edge.id)) this.edges.add(edge); },
+						removeNode: function(nodeId) {
+							if (this.nodes.get(nodeId)) {
+								this.nodes.remove(nodeId);
+							}
+						},
+						removeEdge: function(edgeId) {
+							if (this.edges.get(edgeId)) {
+								this.edges.remove(edgeId);
+							}
+						}
 					};
 
 					Network = new vis.Network(Container, { nodes: Nodes, edges: Edges }, Config.graphOptions);
@@ -1062,6 +1078,11 @@ ${propertyOptions}|show-property-type=true
 								if (edgeExists) {
 									graphModel.removeEdge(edgeId);
 
+									let stillExists = Edges.get().some(e => e.label === edgePropKey);
+									if (!stillExists) {
+										$('#' + edgePropKey.replace(/ /g, '_')).remove();
+									}
+
 									nodesExisting = Nodes.get();
 									edgesExisting = Edges.get();
 
@@ -1137,7 +1158,11 @@ ${propertyOptions}|show-property-type=true
 									};
 									if (typeID === 9) {
 										nodeConfig.shape = 'box';
-										nodeConfig.font = { size: 30 };
+										nodeConfig.font = jQuery.extend(
+											{},
+											Config.graphOptions.nodes.font,
+											{ size: Config.graphOptions.nodes.font.size || 30 }
+										);
 
 										if (!Data[nodeId]) {
 											let dataKey = nodeId.split('_')[0];
@@ -1160,6 +1185,11 @@ ${propertyOptions}|show-property-type=true
 								}
 
 								graphModel.addEdge(edgeConfig);
+
+								if ($('#' + edgePropKey.replace(/ /g, '_')).length === 0) {
+									addLegendEntry(edgePropKey, clickedProperty, nodeColor);
+								}
+
 								nodesExisting = Nodes.get();
 								edgesExisting = Edges.get();
 
@@ -1406,6 +1436,13 @@ ${propertyOptions}|show-property-type=true
 			// $(LegendDiv).height(Config.height);
 			LegendDiv.style.width = Config.width;
 			LegendDiv.style.height = Config.height;
+
+			LegendDiv.addEventListener("click", (e) => {
+				if (e.target.classList.contains("legend-element-container")) {
+					let id = e.target.id.replace(/_/g, " ");
+					dispatchEvent_LegendClick(e, id);
+				}
+			});
 		}
 
 		createNodes(Config.data);
