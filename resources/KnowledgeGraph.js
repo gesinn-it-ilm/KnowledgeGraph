@@ -99,7 +99,7 @@ KnowledgeGraph = function () {
 			if (PropIdPropLabelMap[id] === undefined) {
 				PropIdPropLabelMap[id] = [];
 			}
-			if (PropIdPropLabelMap[id].indexOf(idValue) !== -1) {
+			if (PropIdPropLabelMap[id].indexOf(idValue) !== -1 || PropIdPropLabelMap[id].indexOf(node.id) !== -1) {
 				updateNodes.push({
 					id: node.id,
 					hidden: container.dataset.active === 'true' ? false : true,
