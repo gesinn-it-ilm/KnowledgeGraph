@@ -96,6 +96,9 @@ KnowledgeGraph = function () {
 		
 		Nodes.forEach((node) => {
 			var idValue = checkAndToogleId(node.id);
+			if (PropIdPropLabelMap[id] === undefined) {
+				PropIdPropLabelMap[id] = [];
+			}
 			if (PropIdPropLabelMap[id].indexOf(idValue) !== -1) {
 				updateNodes.push({
 					id: node.id,
@@ -1169,6 +1172,12 @@ ${propertyOptions}|show-property-type=true
 											Data[dataKey] = { properties: [] };
 										}
 									}
+
+									if (!(edgePropKey in PropIdPropLabelMap)) {
+										PropIdPropLabelMap[edgePropKey] = [];
+									}
+									PropIdPropLabelMap[edgePropKey].push(displayLabel);
+
 									graphModel.addNode(nodeConfig);
 									nodesExisting = Nodes.get();
 									edgesExisting = Edges.get();
