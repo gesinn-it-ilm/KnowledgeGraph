@@ -1012,11 +1012,22 @@ ${propertyOptions}|show-property-type=true
 
 							let displayName = p.property.replaceAll('_', ' ') + (p.direction === 'inverse' ? ' (inverse)' : '');
 
+							let expectedLabel = p.direction === 'inverse' 
+								? '-' + p.property.replaceAll('_', ' ') 
+								: p.property.replaceAll('_', ' ');
+
 							// check if property already exists in graph
 							let existsInGraph = edgesExisting.some(edge => {
-								let labelMatch = edge.label === p.property.replaceAll('_', ' ') || edge.label === `-${p.property.replaceAll('_', ' ')}`;
-								let fromOrToMatch = edge.from === title || edge.to === title;
-								return labelMatch && fromOrToMatch;
+								let labelMatch = edge.label === expectedLabel;
+								let fromMatch = edge.from === title;
+								let toMatch = edge.to === title;
+
+								if (p.direction === 'direct') {
+									return labelMatch && fromMatch;
+								} else if (p.direction === 'inverse') {
+									return labelMatch && toMatch;
+								}
+								return false;
 							});
 
 							// Style existing properties differently
