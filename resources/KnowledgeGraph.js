@@ -215,6 +215,23 @@ KnowledgeGraph = function () {
 		return panel.$element.get(0);
 	}
 
+	function wrapLabel(text, maxLength) {
+		const words = text.split(' ');
+		let wrapped = '';
+		let line = '';
+
+		for (let word of words) {
+			if ((line + word).length > maxLength) {
+				if (line) wrapped += line.trim() + '\n';
+				line = word + ' ';
+			} else {
+				line += word + ' ';
+			}
+		}
+		wrapped += line.trim();
+		return wrapped;
+	}
+
 	function addArticleNode(data, label, options, typeID) {
 		if (Nodes.get(label) !== null) {
 			return;
@@ -230,7 +247,7 @@ KnowledgeGraph = function () {
 				label:
 					cleanLabel.length <= maxPropValueLength
 						? cleanLabel
-						: cleanLabel.substring(0, maxPropValueLength) + '…',
+						: wrapLabel(cleanLabel, 20),
 				shape: 'box',
 				font: jQuery.extend(
 					{},
@@ -411,7 +428,7 @@ KnowledgeGraph = function () {
 							if (!Nodes.get(valueId)) {
 								const displayLabel = targetLabel.length <= maxPropValueLength
 									? targetLabel
-									: targetLabel.substring(0, maxPropValueLength) + '…';
+									: wrapLabel(targetLabel, 20);
 
 								Nodes.add(
 									jQuery.extend({}, options, {
@@ -925,17 +942,15 @@ ${propertyOptions}|show-property-type=true
 	}
 
 	function findNodeIdContaining(labelPart) {
-	const allNodes = Nodes.get();
-	for (let node of allNodes) {
-		const nodeLabel = node.id.split('#')[0];
-		if (nodeLabel === labelPart) {
-			return node.id;
+		const allNodes = Nodes.get();
+		for (let node of allNodes) {
+			const nodeLabel = node.id.split('#')[0];
+			if (nodeLabel === labelPart) {
+				return node.id;
+			}
 		}
+		return null;
 	}
-	return null;
-}
-
-	
 
 	function attachContextMenuListener() {
 		Network.on('oncontext', function (params) {
@@ -1122,6 +1137,8 @@ ${propertyOptions}|show-property-type=true
 
 									if (connectedEdges.length === 0) {
 										recursiveDeleteAllChildren(nodeId);
+										let nodeToClear = nodeId.split('#')[0];
+										recursiveDeleteAllChildren(nodeToClear);
 
 										nodesExisting = Nodes.get();
 										edgesExisting = Edges.get();
@@ -1182,7 +1199,7 @@ ${propertyOptions}|show-property-type=true
 								if (!nodesExisting.some(n => n.id === nodeId)) {
 									let nodeConfig = {
 										id: nodeId,
-										label: displayLabel,
+										label: wrapLabel(displayLabel, 20),
 										typeID: typeID,
 										color: nodeColor,
 									};
