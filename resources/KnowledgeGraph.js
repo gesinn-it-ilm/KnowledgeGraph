@@ -998,6 +998,8 @@ ${propertyOptions}|show-property-type=true
 				fetchSemanticDataForNode(nodeId, function (rawProps) {
 					let props = parseProperties(rawProps).filter(p => !p.property.startsWith('_'));
 					nodePropertiesCache[title] = props;
+					let nodesExisting = Nodes.get();
+					let	edgesExisting = Edges.get();
 
 					if (props.length === 0) {
 						$menu.append('<li>(No available properties)</li>');
@@ -1007,7 +1009,23 @@ ${propertyOptions}|show-property-type=true
 							li.classList.add('custom-menu-property-entry');
 							li.dataset.action = p.property.replaceAll('_', ' ');
 							li.dataset.direction = p.direction; 
+
 							let displayName = p.property.replaceAll('_', ' ') + (p.direction === 'inverse' ? ' (inverse)' : '');
+
+							// check if property already exists in graph
+							let existsInGraph = edgesExisting.some(edge => {
+								let labelMatch = edge.label === p.property.replaceAll('_', ' ') || edge.label === `-${p.property.replaceAll('_', ' ')}`;
+								let fromOrToMatch = edge.from === title || edge.to === title;
+								return labelMatch && fromOrToMatch;
+							});
+
+							// Style existing properties differently
+							if (existsInGraph) {
+								li.style.fontStyle = 'italic';
+								li.style.fontWeight = 'bold';
+								li.style.color = '#2B7CE9';    
+							}
+
 							li.innerHTML = '● ' + displayName;
 							$menu.append(li);
 						});
@@ -1049,8 +1067,6 @@ ${propertyOptions}|show-property-type=true
 								};
 							}
 
-							let nodesExisting = Nodes.get();
-							let	edgesExisting = Edges.get();
 							let keepNode = Network.getNodeAt(pointer);
 							let normalize = str => str.replace(/^-/, '');
 
