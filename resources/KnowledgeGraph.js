@@ -314,8 +314,29 @@ KnowledgeGraph = function () {
 				var property = data[label].properties[i];
 
 				if (!(property.canonicalLabel in PropColors)) {
-					// use d3 to get a color
-					PropColors[property.canonicalLabel] = KnowledgeGraphFunctions.colorForPropertyLabel(property.canonicalLabel, colors, PropColors);
+					if (colors && colors.length > 0) {
+						// use d3 palette colors defined in wgKnowledgeGraphColorPalette
+						PropColors[property.canonicalLabel] = KnowledgeGraphFunctions.colorForPropertyLabel(
+							property.canonicalLabel,
+							colors,
+							PropColors
+						);
+					} else {
+						// use random HSL colors if no palette defined
+						let color_;
+						function colorExists() {
+							for (let j in PropColors) {
+								if (PropColors[j] === color_) {
+									return true;
+								}
+							}
+							return false;
+						}
+						do {
+							color_ = KnowledgeGraphFunctions.randomHSL();
+						} while (colorExists());
+						PropColors[property.canonicalLabel] = color_;
+					}
 				}
 
 				var options =
@@ -1061,8 +1082,21 @@ ${propertyOptions}|show-property-type=true
 							let propKey = clickedDirection === 'inverse' ? `-${clickedProperty}` : clickedProperty;
 
 							if (!(propKey in PropColors)) {
-								// use d3 to get a color
-								PropColors[propKey] = KnowledgeGraphFunctions.colorForPropertyLabel(propKey, colors, PropColors);
+								if (colors && colors.length > 0) {
+									// use d3 palette colors defined in wgKnowledgeGraphColorPalette
+									PropColors[propKey] = KnowledgeGraphFunctions.colorForPropertyLabel(
+										propKey,
+										colors,
+										PropColors
+									);
+								} else {
+									// use random HSL colors if no palette defined
+									let color_;
+									do {
+										color_ = KnowledgeGraphFunctions.randomHSL();
+									} while (Object.values(PropColors).includes(color_));
+									PropColors[propKey] = color_;
+								}
 							}
 							let nodeColor = PropColors[propKey];
 
