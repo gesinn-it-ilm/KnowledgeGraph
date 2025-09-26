@@ -28,8 +28,10 @@ KnowledgeGraph = function () {
 	var LegendDiv;
 	var PropIdPropLabelMap = {};
 	var nodePropertiesCache = {};
+	const colors = mw.config.get('wgKnowledgeGraphColorPalette');
 
 	function addLegendEntry(id, label, color) {
+		if (!LegendDiv) return;
 		if ($(LegendDiv).find('#' + id.replace(/ /g, '_')).length) {
 			return;
 		}
@@ -312,19 +314,8 @@ KnowledgeGraph = function () {
 				var property = data[label].properties[i];
 
 				if (!(property.canonicalLabel in PropColors)) {
-					var color_;
-					function colorExists() {
-						for (var j in PropColors) {
-							if (PropColors[j] === color_) {
-								return true;
-							}
-						}
-						return false;
-					}
-					do {
-						color_ = KnowledgeGraphFunctions.randomHSL();
-					} while (colorExists());
-					PropColors[property.canonicalLabel] = color_;
+					// use d3 to get a color
+					PropColors[property.canonicalLabel] = KnowledgeGraphFunctions.colorForPropertyLabel(property.canonicalLabel, colors, PropColors);
 				}
 
 				var options =
@@ -1070,11 +1061,8 @@ ${propertyOptions}|show-property-type=true
 							let propKey = clickedDirection === 'inverse' ? `-${clickedProperty}` : clickedProperty;
 
 							if (!(propKey in PropColors)) {
-								let color_;
-								do {
-									color_ = KnowledgeGraphFunctions.randomHSL();
-								} while (Object.values(PropColors).includes(color_));
-								PropColors[propKey] = color_;
+								// use d3 to get a color
+								PropColors[propKey] = KnowledgeGraphFunctions.colorForPropertyLabel(propKey, colors, PropColors);
 							}
 							let nodeColor = PropColors[propKey];
 

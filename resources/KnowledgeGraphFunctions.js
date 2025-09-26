@@ -27,6 +27,14 @@ KnowledgeGraphFunctions = (function () {
 		return 'hsla(' + 360 * h + ',' + '70%,' + '80%,1)';
 	}
 
+	// use d3 palette colors defined in wgKnowledgeGraphColorPalette
+	function colorForPropertyLabel(label, colors, PropColors = {}) {
+		if (PropColors[label]) return PropColors[label];
+		const index = Object.keys(PropColors).length % colors.length;
+		PropColors[label] = colors[index];
+		return PropColors[label];
+	}
+
 	function getNestedProp(path, obj) {
 		return path.reduce((xs, x) => (xs && xs[x] ? xs[x] : null), obj);
 	}
@@ -54,6 +62,7 @@ KnowledgeGraphFunctions = (function () {
 		isObject,
 		uuidv4,
 		randomHSL,
+		colorForPropertyLabel,
 		getNestedProp,
 		makeEdgeId,
 		makeNodeId
