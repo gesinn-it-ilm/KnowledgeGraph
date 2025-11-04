@@ -35,7 +35,7 @@ KnowledgeGraph = function () {
 		if ($(LegendDiv).find('#' + id.replace(/ /g, '_')).length) {
 			return;
 		}
-		let fontColor = KnowledgeGraphFunctions.getContrastColor(color); // koristi istu WCAG logiku
+		let fontColor = KnowledgeGraphFunctions.getContrastColor(color);
 		if (!fontColor) fontColor = '#000000';
 		
 		var container = document.createElement('button');
@@ -51,6 +51,15 @@ KnowledgeGraph = function () {
 		container.dataset.active_color = color;
 
 		LegendDiv.append(container);
+	}
+
+	function removeLegendEntry(property) {
+		let legendId = property.replace(/ /g, '_');
+		let entry = $('#' + legendId);
+		if (entry.length) {
+			entry.remove();
+			console.debug('Legend entry removed for', property);
+		}
 	}
 
 	function checkAndToogleId(id) {
@@ -1138,15 +1147,28 @@ ${propertyOptions}|show-property-type=true
 							let keepNode = Network.getNodeAt(pointer);
 							let normalize = str => str.replace(/^-/, '');
 
+							let checkedItems = [];
 							propertyData.value.forEach(valueItem => {
 								nodesExisting = Nodes.get();
 								edgesExisting = Edges.get();
-
+								// process each valueItem and get the namespace name
+								let nsName = fetchNamespaceNameForNode(valueItem);
 								let rawLabel = valueItem;
 								let labelWithoutHash = rawLabel.split('#')[0];
 								let displayLabel = labelWithoutHash.replaceAll('_', ' ');
+								displayLabel = nsName ? `${nsName}:${displayLabel}` : displayLabel;
 
-								let existingNode = nodesExisting.find(n => n.label === displayLabel && n.typeID === typeID);
+								if (checkedItems.includes(displayLabel)) {
+									return;
+								}
+
+								checkedItems.push(displayLabel);
+								let existingNode = nodesExisting.find(n => {
+									const normalizedLabel = n.label.replace(/\s+/g, ' ').trim();
+									const shortLabel = normalizedLabel.includes(':') ? normalizedLabel.split(':')[1].trim() : normalizedLabel;
+									const normalizedDisplay = displayLabel.replace(/\s+/g, ' ').trim();
+									return shortLabel === normalizedDisplay && n.typeID === typeID;
+								});
 								let nodeId = existingNode ? existingNode.id : KnowledgeGraphFunctions.makeNodeId(displayLabel, typeID);
 
 								let fromRaw = clickedDirection === 'inverse' ? (nodeId) : (title);
@@ -1167,7 +1189,8 @@ ${propertyOptions}|show-property-type=true
 
 									let stillExists = Edges.get().some(e => e.label === edgePropKey);
 									if (!stillExists) {
-										$('#' + edgePropKey.replace(/ /g, '_')).remove();
+										// $('#' + edgePropKey.replace(/ /g, '_')).remove();
+										removeLegendEntry(edgePropKey);
 									}
 
 									nodesExisting = Nodes.get();
@@ -1216,12 +1239,12 @@ ${propertyOptions}|show-property-type=true
 
 								if (edgeToDelete) {
 									graphModel.removeEdge(edgeToDelete.id);
+									removeLegendEntry(edgePropKey);
 
 									nodesExisting = Nodes.get();
 									edgesExisting = Edges.get();
 
 									let { from, to } = edgeToDelete;
-									
 									let maybeDeleteNode = from === keepNode ? to : from;
 
 									let connectedEdges = Edges.get().filter(e =>
@@ -1286,7 +1309,6 @@ ${propertyOptions}|show-property-type=true
 								}
 
 								graphModel.addEdge(edgeConfig);
-
 								if ($('#' + edgePropKey.replace(/ /g, '_')).length === 0) {
 									addLegendEntry(edgePropKey, clickedProperty, nodeColor);
 								}
@@ -1378,6 +1400,18 @@ ${propertyOptions}|show-property-type=true
 				callback([]);
 			});
 		});
+	}
+
+	function fetchNamespaceNameForNode(title) {
+		const parts = title.split('#');
+		const nsId = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+
+		if (isNaN(nsId)) {
+			return 'Main';
+		}
+
+		const nsMap = mw.config.get('wgFormattedNamespaces') || {};
+		return nsMap[nsId] || 'Main';
 	}
 
 	function parseProperties(dataArray) {

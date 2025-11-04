@@ -640,8 +640,19 @@ nodes=TestPage
 
 			foreach ( $entry['dataitem'] ?? [] as $item ) {
 				if ( $item['type'] === 9 ) {
-					$linkedTitle = explode( '#', $item['item'] )[0];
-					$linkedTitle = $linkedTitle ? str_replace( '_', ' ', $linkedTitle ) : null;
+					$parts = explode( '#', $item['item'] );
+					$dbkey = $parts[0] ?? '';
+					$nsId = isset( $parts[1] ) && is_numeric( $parts[1] ) ? (int)$parts[1] : 0;
+
+					$namespaceInfo = MediaWiki\MediaWikiServices::getInstance()->getNamespaceInfo();
+					$nsName = $namespaceInfo->getCanonicalName( $nsId );
+
+					$linkedTitle = $dbkey;
+					if ( $nsName !== '' && $nsName !== false ) {
+						$linkedTitle = $nsName . ':' . $dbkey;
+					}
+
+					$linkedTitle = str_replace( '_', ' ', $linkedTitle );
 					if ( !$linkedTitle ) {
 						continue;
 					}
