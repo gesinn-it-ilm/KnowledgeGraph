@@ -134,8 +134,52 @@ class KnowledgeGraph {
 	 * @return void
 	 */
 	public static function onBeforePageDisplay( $out, $skin ) {
+		// Ensure that the KnowledgeGraphOptions page exists
+		self::ensureKnowledgeGraphOptionsPageExists();
+		// Add the required JavaScript module
 		$out->addModules( 'ext.KnowledgeGraph' );
 		return true;
+	}
+
+	/**
+	 * Ensure that the KnowledgeGraphOptions page exists in the MediaWiki namespace.
+	 * Creates it lazily if missing.
+	 *
+	 * @return void
+	 */
+	private static function ensureKnowledgeGraphOptionsPageExists() {
+		$title = Title::makeTitleSafe( NS_MEDIAWIKI, 'KnowledgeGraphOptions' );
+		if ( !$title ) {
+			return;
+		}
+
+		$wikiPage = WikiPage::factory( $title );
+		if ( $wikiPage->exists() ) {
+			return;
+		}
+
+		// Create page content
+		$filePath = __DIR__ . '/../data/KnowledgeGraphOptions.js';
+		if ( !file_exists( $filePath ) ) {
+			wfDebugLog( 'KnowledgeGraph', 'Missing KnowledgeGraphOptions.js template file.' );
+			return;
+		}
+
+		$text = file_get_contents( $filePath );
+		$content = ContentHandler::makeContent(
+			$text,
+			$title,
+			CONTENT_MODEL_JAVASCRIPT
+		);
+
+		$user = User::newSystemUser( 'MediaWiki default', [ 'steal' => true ] );
+
+		$pageUpdater = $wikiPage->newPageUpdater( $user );
+		$pageUpdater->setContent( SlotRecord::MAIN, $content );
+		$pageUpdater->saveRevision(
+			CommentStoreComment::newUnsavedComment( 'Initialize KnowledgeGraphOptions' ),
+			EDIT_SUPPRESS_RC
+		);
 	}
 
 	/**
@@ -143,29 +187,6 @@ class KnowledgeGraph {
 	 */
 	public static function onParserFirstCallInit( Parser $parser ) {
 		$parser->setFunctionHook( 'knowledgegraph', [ self::class, 'parserFunctionKnowledgeGraph' ] );
-	}
-
-	/**
-	 * @param DatabaseUpdater|null $updater
-	 */
-	public static function onLoadExtensionSchemaUpdates( DatabaseUpdater $updater = null ) {
-		$text = file_get_contents( __DIR__ . '/../data/KnowledgeGraphOptions.js' );
-		$user = RequestContext::getMain()->getUser();
-		$title = TitleClass::makeTitleSafe( NS_MEDIAWIKI, 'KnowledgeGraphOptions' );
-
-		$wikiPage = self::getWikiPage( $title );
-		$pageUpdater = $wikiPage->newPageUpdater( $user );
-
-		// @see includes/Defines.php
-		$modelId = CONTENT_MODEL_JAVASCRIPT;
-		$slotContent = ContentHandler::makeContent( $text, $title, $modelId );
-		$slotName = SlotRecord::MAIN;
-		$pageUpdater->setContent( $slotName, $slotContent );
-
-		$summary = "KnowledgeGraph";
-		$flags = EDIT_INTERNAL;
-		$comment = CommentStoreComment::newUnsavedComment( $summary );
-		$pageUpdater->saveRevision( $comment, $flags );
 	}
 
 	/**

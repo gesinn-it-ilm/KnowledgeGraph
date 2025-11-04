@@ -36,7 +36,6 @@
 		"KnowledgeGraphDesigner": "SpecialKnowledgeGraphDesigner"
 	},
 	"Hooks":{
-		"LoadExtensionSchemaUpdates": "KnowledgeGraph::onLoadExtensionSchemaUpdates",
 		"BeforePageDisplay":"KnowledgeGraph::onBeforePageDisplay",
 		"ParserFirstCallInit": "KnowledgeGraph::onParserFirstCallInit",
 		"OutputPageParserOutput": "KnowledgeGraph::onOutputPageParserOutput",
