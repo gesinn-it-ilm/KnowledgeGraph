@@ -296,6 +296,7 @@ nodes=TestPage
 		$params['graphOptions'] = $graphOptions;
 		$params['propertyOptions'] = $propertyOptions;
 		self::$graphs[] = $params;
+		self::$data = [];
 
 		$out->setExtensionData( 'knowledgegraphs', self::$graphs );
 
