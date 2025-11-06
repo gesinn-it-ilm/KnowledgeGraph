@@ -1151,13 +1151,20 @@ ${propertyOptions}|show-property-type=true
 							propertyData.value.forEach(valueItem => {
 								nodesExisting = Nodes.get();
 								edgesExisting = Edges.get();
+								let displayLabel = '';
 								// process each valueItem and get the namespace name
-								let nsName = fetchNamespaceNameForNode(valueItem);
-								let rawLabel = valueItem;
-								let labelWithoutHash = rawLabel.split('#')[0];
-								let displayLabel = labelWithoutHash.replaceAll('_', ' ');
-								displayLabel = nsName ? `${nsName}:${displayLabel}` : displayLabel;
-
+								if (typeID === 9) {
+									let nsName = fetchNamespaceNameForNode(valueItem, typeID);
+									let rawLabel = valueItem;
+									let labelWithoutHash = rawLabel.split('#')[0];
+									let displayLabel = labelWithoutHash.replaceAll('_', ' ');
+									displayLabel = nsName ? `${nsName}:${displayLabel}` : displayLabel;
+								} else {
+									let rawLabel = valueItem;
+									let labelWithoutHash = rawLabel.split('#')[0];
+									displayLabel = labelWithoutHash.replaceAll('_', ' ');
+								}
+								
 								if (checkedItems.includes(displayLabel)) {
 									return;
 								}
