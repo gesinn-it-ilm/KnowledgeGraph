@@ -136,8 +136,6 @@ class KnowledgeGraph {
 	public static function onBeforePageDisplay( $out, $skin ) {
 		// Ensure that the KnowledgeGraphOptions page exists
 		self::ensureKnowledgeGraphOptionsPageExists();
-		// Add the required JavaScript module
-		$out->addModules( 'ext.KnowledgeGraph' );
 		return true;
 	}
 
@@ -424,6 +422,9 @@ nodes=TestPage
 			$out->addJsConfigVars( [
 				'knowledgegraphs' => json_encode( $data )
 			] );
+
+			// add the required JavaScript module if graphs are present
+			$out->addModules( 'ext.KnowledgeGraph' );
 		}
 	}
 
