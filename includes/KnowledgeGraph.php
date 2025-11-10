@@ -310,8 +310,9 @@ nodes=TestPage
 			'wgKnowledgeGraphColorPalette' => $colors
 		] );
 
+		$index = count( self::$graphs ) - 1;
 		return [
-			'<div class="KnowledgeGraph" id="knowledgegraph-wrapper-' . key( self::$graphs ) . '">'
+			'<div class="KnowledgeGraph" id="knowledgegraph-wrapper-' . $index . '">'
 				. wfMessage( 'knowledge-graph-wrapper-loading' )->text() . '</div>',
 			'noparse' => true,
 			'isHTML' => true
