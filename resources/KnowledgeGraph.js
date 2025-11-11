@@ -35,42 +35,41 @@ KnowledgeGraph = function () {
 	self.colors = mw.config.get('wgKnowledgeGraphColorPalette');
 
 	function addLegendEntry(id, label, color) {
-	if (!self.LegendDiv) return;
+		if (!self.LegendDiv) return;
 
-	// napravi jedinstven ID po instanci
-	const safeId = id.replace(/ /g, '_');
-	const uniqueId = `${self.id}-${safeId}`;
+		const safeId = id.replace(/ /g, '_');
+		const uniqueId = `${self.id}-${safeId}`;
+		
+		if (self.LegendDiv.querySelector(`#${CSS.escape(uniqueId)}`)) {
+			return;
+		}
 
-	// proveri unutar svoje legende da li već postoji
-	if (self.LegendDiv.querySelector(`#${CSS.escape(uniqueId)}`)) {
-		return;
+		let fontColor = KnowledgeGraphFunctions.getContrastColor(color);
+		if (!fontColor) fontColor = '#000000';
+
+		const container = document.createElement('button');
+		container.className = 'legend-element-container btn btn-outline-light';
+		container.id = uniqueId;
+		container.style.color = fontColor;
+		container.style.background = color;
+		container.innerHTML = label;
+		container.innerHTML = id;
+
+		container.dataset.active = true;
+		container.dataset.active_color = color;
+
+		self.LegendDiv.append(container);
 	}
-
-	let fontColor = KnowledgeGraphFunctions.getContrastColor(color);
-	if (!fontColor) fontColor = '#000000';
-
-	const container = document.createElement('button');
-	container.className = 'legend-element-container btn btn-outline-light';
-	container.id = uniqueId;
-	container.style.color = fontColor;
-	container.style.background = color;
-	container.innerHTML = label;
-	container.innerHTML = id;
-
-	container.dataset.active = true;
-	container.dataset.active_color = color;
-
-	self.LegendDiv.append(container);
-}
-
 
 	function removeLegendEntry(property) {
 		if (!self.LegendDiv) return;
-		const legendId = property.replace(/ /g, '_');
-		const entry = $(self.LegendDiv).find('#' + legendId);
-		if (entry.length) {
+		// use instance-specific ID
+		const safeId = `${this.id}-${property.replace(/ /g, '_')}`;
+		const entry = this.LegendDiv.querySelector(`#${CSS.escape(safeId)}`);
+
+		if (entry) {
 			entry.remove();
-			console.debug('Legend entry removed for', property);
+			console.debug(`Legend entry removed for ${property} in ${this.id}`);
 		}
 	}
 
@@ -1079,8 +1078,9 @@ ${propertyOptions}|show-property-type=true
 									);
 
 									if (!stillExists) {
-										removeLegendEntry(edgePropKey);
+										removeLegendEntry.call(self, edgePropKey);
 									} else {
+										self.graphModel.removeNode(nodeId);
 										return;
 									}
 									nodesExisting = self.Nodes.get();
@@ -1100,33 +1100,6 @@ ${propertyOptions}|show-property-type=true
 									}
 									return;
 								}
-
-								// const edgeExists = edgesExisting.some(e => e.id === edgeId);
-								// if (edgeExists) {
-								// 	self.graphModel.removeEdge(edgeId);
-
-								// 	const stillExists = self.Edges.get().some(e => e.label === edgePropKey);
-								// 	if (!stillExists) {
-								// 		removeLegendEntry(edgePropKey);
-								// 	}
-
-								// 	nodesExisting = self.Nodes.get();
-								// 	edgesExisting = self.Edges.get();
-
-								// 	const connectedEdges = self.Edges.get().filter(e =>
-								// 		(e.from === nodeId || e.to === nodeId) && e.id !== edgeId
-								// 	);
-
-								// 	if (connectedEdges.length === 0) {
-								// 		recursiveDeleteAllChildren.call(self, nodeId);
-								// 		const nodeToClear = nodeId.split('#')[0];
-								// 		recursiveDeleteAllChildren.call(self, nodeToClear);
-
-								// 		nodesExisting = self.Nodes.get();
-								// 		edgesExisting = self.Edges.get();
-								// 	}
-								// 	return;
-								// }
 
 								function stripHashSuffix(str) {
 									return str.split('#')[0];
