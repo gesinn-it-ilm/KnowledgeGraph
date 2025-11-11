@@ -79,49 +79,45 @@ KnowledgeGraph = function () {
 	}
 
 	function dispatchEvent_LegendClick(event, id) {
-		if (!self.LegendDiv) return;
-		const container = $(self.LegendDiv).find('#' + id.replace(/ /g, '_'))[0];
+		if (!this.LegendDiv) return;
+
+		const safeId = `${this.id}-${id.replace(/ /g, '_')}`;
+		const container = this.LegendDiv.querySelector(`#${CSS.escape(safeId)}`);
 		if (!container) return;
 
-		if (container.dataset.active === 'true') {
-			container.dataset.active = false;
-			container.style.background = '#FFFFFF';
+		const isActive = container.dataset.active === 'true';
+		container.dataset.active = (!isActive).toString();
 
-			let bgColor = container.style.background;
-			let fontColor = KnowledgeGraphFunctions.getContrastColor(bgColor);
-			if (!fontColor) fontColor = '#000000';
+		if (isActive) {
+			container.style.background = '#FFFFFF';
+			const fontColor = KnowledgeGraphFunctions.getContrastColor(container.style.background) || '#000000';
 			container.style.color = fontColor;
 		} else {
-			container.dataset.active = true;
 			container.style.background = container.dataset.active_color;
-
-			let bgColor = container.style.background;
-			let fontColor = KnowledgeGraphFunctions.getContrastColor(bgColor);
-			if (!fontColor) fontColor = '#000000';
+			const fontColor = KnowledgeGraphFunctions.getContrastColor(container.style.background) || '#000000';
 			container.style.color = fontColor;
 		}
 
 		const updateNodes = [];
 		const visited = [];
+		const self = this;
 
 		function toggleConnectedNodes(nodeId) {
-			if (visited.indexOf(nodeId) !== -1) {
-				return;
-			}
+			if (visited.includes(nodeId)) return;
 			visited.push(nodeId);
 
 			const connectedNodes = self.Network.getConnectedNodes(nodeId);
-
 			for (const nodeId_ of connectedNodes) {
 				const connectedEdgesIds = self.Network.getConnectedEdges(nodeId_);
 				const connectedEdges = self.Edges.get(connectedEdgesIds);
 
 				let found = false;
-				connectedEdges.forEach((edge) => {
+				for (const edge of connectedEdges) {
 					if (edge.to === nodeId || edge.from === nodeId) {
 						found = true;
+						break;
 					}
-				});
+				}
 
 				if (!found) {
 					updateNodes.push({
@@ -133,14 +129,16 @@ KnowledgeGraph = function () {
 			}
 		}
 
-		self.Nodes.forEach((node) => {
+		this.Nodes.forEach((node) => {
 			const idValue = checkAndToogleId(node.id);
-			if (self.PropIdPropLabelMap[id] === undefined) {
-				self.PropIdPropLabelMap[id] = [];
+
+			if (this.PropIdPropLabelMap[id] === undefined) {
+				this.PropIdPropLabelMap[id] = [];
 			}
+
 			if (
-				self.PropIdPropLabelMap[id].indexOf(idValue) !== -1 ||
-				self.PropIdPropLabelMap[id].indexOf(node.id) !== -1
+				this.PropIdPropLabelMap[id].includes(idValue) ||
+				this.PropIdPropLabelMap[id].includes(node.id)
 			) {
 				updateNodes.push({
 					id: node.id,
@@ -150,7 +148,7 @@ KnowledgeGraph = function () {
 			}
 		});
 
-		self.Nodes.update(updateNodes);
+		this.Nodes.update(updateNodes);
 	}
 
 	function deleteNode(nodeId) {
@@ -1459,13 +1457,17 @@ ${propertyOptions}|show-property-type=true
 			// LegendDiv.style.gap = '8px';
 
 			LegendDiv.addEventListener("click", (e) => {
+				debugger;
 				if (e.target.classList.contains("legend-element-container")) {
-					// ukloni prefiks instance (npr. knowledgegraph-wrapper-0-)
 					let id = e.target.id
 						.replace(/^knowledgegraph-wrapper-\d+-/, '')
 						.replace(/_/g, ' ');
 
-					dispatchEvent_LegendClick.call(self, e, id);
+					if (typeof dispatchEvent_LegendClick === "function") {
+						dispatchEvent_LegendClick.call(self, e, id);
+					} else if (self.dispatchEvent_LegendClick) {
+						self.dispatchEvent_LegendClick(e, id);
+					}
 				}
 			});
 
