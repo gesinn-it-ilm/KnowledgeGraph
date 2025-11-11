@@ -35,24 +35,34 @@ KnowledgeGraph = function () {
 	self.colors = mw.config.get('wgKnowledgeGraphColorPalette');
 
 	function addLegendEntry(id, label, color) {
-		if (!self.LegendDiv) return;
-		if ($(self.LegendDiv).find('#' + id.replace(/ /g, '_')).length) {
-			return;
-		}
-		let fontColor = KnowledgeGraphFunctions.getContrastColor(color);
-		if (!fontColor) fontColor = '#000000';
+	if (!self.LegendDiv) return;
 
-		const container = document.createElement('button');
-		container.className = 'legend-element-container btn btn-outline-light';
-		container.id = id.replace(/ /g, '_');
-		container.style.color = fontColor;
-		container.style.background = color;
-		container.innerHTML = label;
-		container.dataset.active = true;
-		container.dataset.active_color = color;
+	// napravi jedinstven ID po instanci
+	const safeId = id.replace(/ /g, '_');
+	const uniqueId = `${self.id}-${safeId}`;
 
-		self.LegendDiv.append(container);
+	// proveri unutar svoje legende da li već postoji
+	if (self.LegendDiv.querySelector(`#${CSS.escape(uniqueId)}`)) {
+		return;
 	}
+
+	let fontColor = KnowledgeGraphFunctions.getContrastColor(color);
+	if (!fontColor) fontColor = '#000000';
+
+	const container = document.createElement('button');
+	container.className = 'legend-element-container btn btn-outline-light';
+	container.id = uniqueId;
+	container.style.color = fontColor;
+	container.style.background = color;
+	container.innerHTML = label;
+	container.innerHTML = id;
+
+	container.dataset.active = true;
+	container.dataset.active_color = color;
+
+	self.LegendDiv.append(container);
+}
+
 
 	function removeLegendEntry(property) {
 		if (!self.LegendDiv) return;
@@ -1450,8 +1460,12 @@ ${propertyOptions}|show-property-type=true
 
 			LegendDiv.addEventListener("click", (e) => {
 				if (e.target.classList.contains("legend-element-container")) {
-					let id = e.target.id.replace(/_/g, " ");
-					dispatchEvent_LegendClick(e, id);
+					// ukloni prefiks instance (npr. knowledgegraph-wrapper-0-)
+					let id = e.target.id
+						.replace(/^knowledgegraph-wrapper-\d+-/, '')
+						.replace(/_/g, ' ');
+
+					dispatchEvent_LegendClick.call(self, e, id);
 				}
 			});
 
