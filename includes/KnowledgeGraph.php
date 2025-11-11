@@ -380,6 +380,75 @@ nodes=TestPage
 	}
 
 	/**
+	 * Get all properties for a given node.
+	 * @param string $nodeTitleText
+	 * @return array
+	 */
+	public static function getAllPropertiesForNode( string $nodeTitleText ): array {
+		$ret = [];
+
+		$title = Title::newFromText( $nodeTitleText );
+		if ( !$title || !$title->isKnown() ) {
+			wfDebugLog( 'KnowledgeGraph', "Invalid or unknown node: '$nodeTitleText'" );
+			return [];
+		}
+
+		$apiParams = [
+			'action' => 'smwbrowse',
+			'format' => 'json',
+			'browse' => 'subject',
+			'params' => json_encode( [
+				'subject' => $nodeTitleText,
+				'ns' => $title->getNamespace(),
+			] ),
+		];
+
+		$request = new \FauxRequest( $apiParams, false );
+		$api = new \ApiMain( $request );
+		$api->execute();
+		$data = $api->getResult()->getResultData();
+
+		if ( empty( $data[ 'query' ][ 'data' ] ) ) {
+			wfDebugLog( 'KnowledgeGraph', "No properties returned from smwbrowse for '$nodeTitleText'" );
+			return [];
+		}
+
+		foreach ( $data['query']['data'] as $propertyEntry ) {
+			$propKey = $propertyEntry['property'] ?? null;
+			$direction = $propertyEntry['direction'] ?? 'direct';
+
+			if ( !$propKey ) {
+				continue;
+			}
+
+			if (
+				( isset( self::$exclude ) && in_array( $propKey, self::$exclude ) ) ||
+				str_starts_with( $propKey, '_' ) ||
+				str_starts_with( $propKey, '___' ) ||
+				ctype_upper( str_replace( '_', '', $propKey ) )
+			) {
+				continue;
+			}
+
+			$propKey = str_replace( '_', ' ', $propKey );
+
+			if ( $direction === 'inverse' ) {
+				$propKey = '-' . $propKey;
+			}
+
+			$ret[] = $propKey;
+		}
+
+		wfDebugLog( 'KnowledgeGraph', sprintf(
+			"getAllPropertiesForNode (smwbrowse): node=%s, properties=%d",
+			$nodeTitleText,
+			count( $ret )
+		) );
+
+		return array_unique( $ret );
+	}
+
+	/**
 	 * @param Title|MediaWiki\Title\Title $title $title
 	 * @return string|null
 	 */
