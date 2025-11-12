@@ -1107,9 +1107,9 @@ ${propertyOptions}|show-property-type=true
 										const nodeToClear = nodeId.split('#')[0];
 										// recursiveDeleteAllChildren.call(self, nodeToClear);
 
-										if ((edgePropKey in self.PropIdPropLabelMap)) {
-											delete self.PropIdPropLabelMap[edgePropKey];
-										}
+										// if ((edgePropKey in self.PropIdPropLabelMap)) {
+										// 	delete self.PropIdPropLabelMap[edgePropKey];
+										// }
 
 										nodesExisting = self.Nodes.get();
 										edgesExisting = self.Edges.get();
