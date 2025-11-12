@@ -1023,6 +1023,7 @@ ${propertyOptions}|show-property-type=true
 							let normalize = str => str.replace(/^-/, '');
 
 							const checkedItems = [];
+							const checkedItemsIds = [];
 
 							propertyData.value.forEach(valueItem => {
 								nodesExisting = self.Nodes.get();
@@ -1047,12 +1048,22 @@ ${propertyOptions}|show-property-type=true
 								}
 
 								checkedItems.push(displayLabel);
+								checkedItemsIds.push(displayLabel + '#' + typeID);
+
+								const alreadyChecked = nodesExisting.some(n => {
+									return checkedItemsIds.includes(n.id);
+								});
+
+								// if (alreadyChecked) {
+								// 	return;
+								// }
 
 								const existingNode = nodesExisting.find(n => {
 									const normalizedLabel = n.label.replace(/\s+/g, ' ').trim();
 									const shortLabel = normalizedLabel.includes(':') ? normalizedLabel.split(':')[1].trim() : normalizedLabel;
 									const normalizedDisplay = displayLabel.replace(/\s+/g, ' ').trim();
-									return normalizedDisplay.includes(shortLabel) && n.typeID === typeID;
+									const count = displayLabel.split(':').length - 1;
+									return normalizedDisplay.includes(shortLabel) && count === 1 && n.typeID === typeID;
 								});
 
 								const nodeId = existingNode ? existingNode.id : KnowledgeGraphFunctions.makeNodeId(displayLabel, typeID);
@@ -1068,7 +1079,6 @@ ${propertyOptions}|show-property-type=true
 								const edgeId = KnowledgeGraphFunctions.makeEdgeId(fromNode, toNode, edgePropKey, typeID, self.Nodes);
 
 								// remove if edge exists
-								debugger;
 								const edgeToRemove = self.Edges.get(edgeId);
 								if (edgeToRemove) {
 									self.graphModel.removeEdge(edgeId);
@@ -1079,21 +1089,36 @@ ${propertyOptions}|show-property-type=true
 
 									if (!stillExists) {
 										removeLegendEntry.call(self, edgePropKey);
-									} else {
-										self.graphModel.removeNode(nodeId);
-										return;
-									}
+									} 
+									// else {
+									// 	self.graphModel.removeNode(nodeId);
+									// 	return;
+									// }
 									nodesExisting = self.Nodes.get();
 									edgesExisting = self.Edges.get();
 
-									const connectedEdges = self.Edges.get().filter(e =>
-										(e.from === nodeId || e.to === nodeId) && e.id !== edgeId
+									const allEdges = self.Edges.get();
+									const connectedEdges = allEdges.filter(e =>
+										e.id !== edgeId && (e.from === nodeId || e.to === nodeId)
 									);
 
 									if (connectedEdges.length === 0) {
 										recursiveDeleteAllChildren.call(self, nodeId);
 										const nodeToClear = nodeId.split('#')[0];
-										recursiveDeleteAllChildren.call(self, nodeToClear);
+										// recursiveDeleteAllChildren.call(self, nodeToClear);
+
+										if ((edgePropKey in self.PropIdPropLabelMap)) {
+											delete self.PropIdPropLabelMap[edgePropKey];
+										}
+
+										nodesExisting = self.Nodes.get();
+										edgesExisting = self.Edges.get();
+									} else {
+										self.graphModel.removeEdge(edgeId);
+
+										// if ((edgePropKey in self.PropIdPropLabelMap)) {
+										// 	delete self.PropIdPropLabelMap[edgePropKey];
+										// }
 
 										nodesExisting = self.Nodes.get();
 										edgesExisting = self.Edges.get();
@@ -1430,7 +1455,6 @@ ${propertyOptions}|show-property-type=true
 			// LegendDiv.style.gap = '8px';
 
 			LegendDiv.addEventListener("click", (e) => {
-				debugger;
 				if (e.target.classList.contains("legend-element-container")) {
 					let id = e.target.id
 						.replace(/^knowledgegraph-wrapper-\d+-/, '')
