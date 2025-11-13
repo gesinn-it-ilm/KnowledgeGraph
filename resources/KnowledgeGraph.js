@@ -975,7 +975,6 @@ ${propertyOptions}|show-property-type=true
 
 					// click handler for property entries
 					$menu.find('li.kg-node-properties-menu-property-entry').off('click').on('click', (ev) => {
-						debugger;
 						const $li = $(ev.currentTarget);
 						const clickedProperty = $li.data('action');
 						const clickedDirection = $li.data('direction');
