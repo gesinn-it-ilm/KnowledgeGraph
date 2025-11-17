@@ -21,6 +21,8 @@
 	"knowledgegraph-dialog-cancel": "Abbrechen",
 	"knowledgegraph-dialog-delete": "Löschen",
 	"knowledgegraph-dialog-select-article": "Wählen Sie einen Artikel mit semantischen Attributen",
+	"knowledgegraph-dialog-select-namespace": "Wählen Sie einen Namensraum",
+	"knowledgegraph-dialog-main-namespace": "(Main)",
 	"knowledgegraph-dialog-edit-depth": "Tiefe",
 	"knowledgegraph-dialog-edit-limit": "Limit",
 	"knowledgegraph-dialog-edit-offset": "Versatz",

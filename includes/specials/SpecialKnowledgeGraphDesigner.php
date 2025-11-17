@@ -71,6 +71,10 @@ class SpecialKnowledgeGraphDesigner extends SpecialPage {
 			'wgKnowledgeGraphColorPalette' => $colors
 		] );
 
+		$out->addJsConfigVars( [
+			'wgExtraNamespaces' => $GLOBALS['wgExtraNamespaces'],
+		] );
+
 		$out->addHTML(
 			'<div class="KnowledgeGraph" id="knowledgegraph-wrapper-' . key( \KnowledgeGraph::$graphs ) . '">'
 				. wfMessage( 'knowledge-graph-wrapper-loading' )->text() . '</div>'

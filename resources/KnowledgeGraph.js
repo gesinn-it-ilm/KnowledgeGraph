@@ -547,7 +547,14 @@ KnowledgeGraph = function () {
 										resolve();
 										return;
 									}
-									var titleFullText = thisDialog.titleInputWidget.getMWTitle().getPrefixedText();
+									let ns = parseInt(thisDialog.namespaceDropdown.getValue() || 0, 10);
+									let titleObj = mw.Title.newFromText(titleValue, ns);
+
+									if (!titleObj) {
+										resolve();
+										return;
+									}
+									let titleFullText = titleObj.getPrefixedText();
 
 									if (titleFullText in self.Data) {
 										thisDialog.actions.setMode('existing-node');
@@ -621,7 +628,11 @@ KnowledgeGraph = function () {
 									self.TmpData = data;
 									let mode;
 									if (selectedTab === 'by-article') {
-										const properties_ = data[titleFullText];
+										let ns = parseInt(thisDialog.namespaceDropdown.getValue() || 0, 10);
+										let titleObj = mw.Title.newFromText(titleValue, ns);
+										titleFullText = titleObj ? titleObj.getPrefixedText() : titleValue;
+
+										let properties_ = data[titleFullText] || data[titleValue] || {};
 										mode = Object.keys(properties_).length ? 'show-results' : 'no-results';
 									} else {
 										mode = Object.keys(data).length ? 'show-results' : 'no-results';
