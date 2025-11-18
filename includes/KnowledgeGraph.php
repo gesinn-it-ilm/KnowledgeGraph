@@ -627,7 +627,16 @@ nodes=TestPage
 			return;
 		}
 
-		if ( $depth > $maxDepth ) {
+		// If maxDepth is 0, only create the root node without loading SMW data
+		if ( $maxDepth === 0 ) {
+			self::$data[$titleText] = [
+				'properties' => [],
+				'categories' => [],
+			];
+			return;
+		}
+
+		if ( $depth >= $maxDepth ) {
 			return;
 		}
 
