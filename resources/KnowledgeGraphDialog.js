@@ -356,7 +356,7 @@ KnowledgeGraphDialog = (function () {
 		// When working with a stack layout, you can use:
 		//   return this.panels.getCurrentItem().$element.outerHeight( true );
 		//return this.stackLayout.getCurrentItem().$element.outerHeight(true);
-		return 280;
+		return 340;
 	};
 
 	MyDialog.prototype.getSetupProcess = function (data) {
