@@ -20,19 +20,17 @@ class KnowledgeGraphTest extends TestCase {
 		$this->assertNotContains( '_INVALID', KnowledgeGraph::$exclude, 'Exclude array should not contain _INVALID' );
 	}
 
-	// /**
-	//  * @covers KnowledgeGraph::onBeforePageDisplay
-	//  */
-	// public function testOnBeforePageDisplay() {
-	// 	$outMock = $this->createMock( OutputPage::class );
-	// 	$skinMock = $this->createMock( Skin::class );
+	/**
+	 * @covers KnowledgeGraph::onBeforePageDisplay
+	 */
+	public function testOnBeforePageDisplay() {
+		$outMock = $this->createMock( OutputPage::class );
+		$skinMock = $this->createMock( Skin::class );
 
-	// 	$outMock->expects( $this->once() )
-	// 			->method( 'addModules' )
-	// 			->with( 'ext.KnowledgeGraph' );
+		$result = KnowledgeGraph::onBeforePageDisplay( $outMock, $skinMock );
 
-	// 	KnowledgeGraph::onBeforePageDisplay( $outMock, $skinMock );
-	// }
+		$this->assertTrue( $result );
+	}
 
 	/**
 	 * @covers KnowledgeGraph::onParserFirstCallInit
